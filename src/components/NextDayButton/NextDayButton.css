@@ -1,0 +1,55 @@
+.next-day-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0.5rem auto 1.5rem;
+  padding: 0.6rem 1.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.next-day-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.next-day-btn:active {
+  transform: scale(0.96);
+}
+
+.next-day-btn__chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.3s ease;
+}
+
+/* Bounce animation when user reaches bottom of scroll */
+.next-day-btn--pulse {
+  animation: nextDayPulse 1.2s ease-in-out infinite;
+}
+
+.next-day-btn--pulse .next-day-btn__chevron {
+  animation: chevronBounce 1.2s ease-in-out infinite;
+}
+
+@keyframes nextDayPulse {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.25); }
+  50% { border-color: rgba(255, 255, 255, 0.6); }
+}
+
+@keyframes chevronBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}

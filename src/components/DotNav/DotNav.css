@@ -1,35 +1,43 @@
 .dot-nav {
   position: fixed;
-  right: 0.6rem;
+  right: 0.4rem;
   top: 50%;
   transform: translateY(-50%);
   z-index: 100;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
   padding: 0.5rem 0.3rem;
 }
 
 .dot-nav__dot {
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.35);
   cursor: pointer;
   padding: 0;
+  position: relative;
   transition: background 0.2s, transform 0.2s;
+}
+
+/* Expanded invisible tap target */
+.dot-nav__dot::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 
 .dot-nav__dot:hover {
   background: rgba(255, 255, 255, 0.6);
-  transform: scale(1.3);
+  transform: scale(1.2);
 }
 
 .dot-nav__dot--active {
   background: #fff;
-  transform: scale(1.35);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+  transform: scale(1.3);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
 }
 
 .dot-nav__dot:focus-visible {

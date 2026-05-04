@@ -3,9 +3,14 @@ import { createDayHeader } from '../DayHeader';
 import { createTimeline } from '../Timeline';
 import { createStayCard } from '../StayCard';
 import { createPhotoStrip } from '../PhotoStrip';
+import { createNextDayButton } from '../NextDayButton/NextDayButton';
 import type { Day } from '../../types';
 
-export function createDay(day: Day): HTMLElement {
+export interface CreateDayOptions {
+  onNextDay?: () => void;
+}
+
+export function createDay(day: Day, options: CreateDayOptions = {}): HTMLElement {
   const section = document.createElement('section');
   section.className = 'day';
   section.id = `day-${day.dayNumber}`;
@@ -32,10 +37,15 @@ export function createDay(day: Day): HTMLElement {
     scroll.appendChild(createPhotoStrip(day.photos));
   }
 
-  // spacer at bottom for comfortable scroll
-  const spacer = document.createElement('div');
-  spacer.className = 'day__spacer';
-  scroll.appendChild(spacer);
+  // "Next Day" button or spacer at bottom
+  if (options.onNextDay) {
+    const nextBtn = createNextDayButton(day.dayNumber + 1, options.onNextDay);
+    scroll.appendChild(nextBtn);
+  } else {
+    const spacer = document.createElement('div');
+    spacer.className = 'day__spacer';
+    scroll.appendChild(spacer);
+  }
 
   overlay.appendChild(scroll);
   section.appendChild(overlay);

@@ -51,8 +51,14 @@ async function main(): Promise<void> {
 
   // Mount day sections
   const daySections: HTMLElement[] = [];
-  for (const day of days) {
-    const section = createDay(day);
+  for (let i = 0; i < days.length; i++) {
+    const day = days[i];
+    const isLastDay = i === days.length - 1;
+    const section = createDay(day, {
+      onNextDay: isLastDay ? undefined : () => {
+        daySections[i + 1]?.scrollIntoView({ behavior: 'smooth' });
+      },
+    });
     daySections.push(section);
     app.appendChild(section);
   }
@@ -120,6 +126,49 @@ async function main(): Promise<void> {
   // Initialize header & dot nav with first day
   updateDotNav(dotNav, 0);
   updateAppHeader(header, days[0].dayNumber, days[0].date);
+
+  // Overscroll-to-next-day detection for each day's inner scroll container
+  for (let i = 0; i < daySections.length - 1; i++) {
+    const scrollEl = daySections[i].querySelector<HTMLElement>('.day__scroll');
+    const nextBtn = daySections[i].querySelector<HTMLElement>('.next-day-btn');
+    if (!scrollEl) continue;
+
+    let atBottom = false;
+    let touchStartY = 0;
+
+    // Track when user reaches the bottom of scrollable content
+    scrollEl.addEventListener('scroll', () => {
+      const isAtBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
+      if (isAtBottom !== atBottom) {
+        atBottom = isAtBottom;
+        nextBtn?.classList.toggle('next-day-btn--pulse', atBottom);
+      }
+    }, { passive: true });
+
+    // Touch: detect continued upward swipe at bottom
+    scrollEl.addEventListener('touchstart', (e) => {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    scrollEl.addEventListener('touchmove', (e) => {
+      if (!atBottom) return;
+      const deltaY = touchStartY - e.touches[0].clientY;
+      // User is swiping up (finger moving up) while already at bottom
+      if (deltaY > 40) {
+        atBottom = false;
+        nextBtn?.classList.remove('next-day-btn--pulse');
+        daySections[i + 1].scrollIntoView({ behavior: 'smooth' });
+      }
+    }, { passive: true });
+
+    // Mouse wheel: detect continued scroll-down at bottom
+    scrollEl.addEventListener('wheel', (e) => {
+      if (!atBottom || e.deltaY <= 0) return;
+      atBottom = false;
+      nextBtn?.classList.remove('next-day-btn--pulse');
+      daySections[i + 1].scrollIntoView({ behavior: 'smooth' });
+    }, { passive: true });
+  }
 
   // Auto-scroll to today if trip is in progress
   if (todayIndex >= 0) {
