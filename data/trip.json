@@ -1,0 +1,13 @@
+{
+  "name": "Los Angeles 2026",
+  "destination": "Los Angeles",
+  "shortName": "LA Trip 2026",
+  "description": "Los Angeles Trip Itinerary — Nov 13–26, 2026",
+  "timezone": "America/Los_Angeles",
+  "location": {
+    "lat": 34.0522,
+    "lng": -118.2437
+  },
+  "startDate": "2026-11-13",
+  "endDate": "2026-11-26"
+}
