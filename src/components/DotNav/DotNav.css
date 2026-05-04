@@ -1,0 +1,38 @@
+.dot-nav {
+  position: fixed;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem 0.3rem;
+}
+
+.dot-nav__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.dot-nav__dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.3);
+}
+
+.dot-nav__dot--active {
+  background: #fff;
+  transform: scale(1.35);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+
+.dot-nav__dot:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

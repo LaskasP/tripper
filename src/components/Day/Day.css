@@ -1,0 +1,62 @@
+.day {
+  height: 100dvh;
+  scroll-snap-align: start;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.day__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.45) 0%,
+    rgba(0, 0, 0, 0.55) 40%,
+    rgba(0, 0, 0, 0.75) 100%
+  );
+  display: flex;
+  flex-direction: column;
+}
+
+.day__scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.day__scroll::-webkit-scrollbar {
+  width: 3px;
+}
+
+.day__scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.day__summary {
+  margin: 0;
+  padding: 0 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.day__spacer {
+  flex-shrink: 0;
+  height: 2rem;
+}
+
+@media (min-width: 768px) {
+  .day__scroll {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+}
