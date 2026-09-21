@@ -6,10 +6,22 @@ import { createDay } from './components/Day';
 import { createAppHeader, updateAppHeader } from './components/AppHeader';
 import { createDotNav, updateDotNav } from './components/DotNav';
 import type { Day, TripConfig } from './types';
+import { renderMyTrips, renderSelectedTrip } from './components/MyTrips';
 
 async function main(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
+
+  if (window.location.pathname.replace(/\/$/, '').endsWith('/my-trips')) {
+    await renderMyTrips(app);
+    return;
+  }
+
+  const selectedTripId = new URLSearchParams(window.location.search).get('trip');
+  if (selectedTripId) {
+    await renderSelectedTrip(app, selectedTripId);
+    return;
+  }
 
   // Loading state
   const loading = document.createElement('div');

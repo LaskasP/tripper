@@ -1,0 +1,40 @@
+name: Backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: tripper_test
+          POSTGRES_USER: tripper
+          POSTGRES_PASSWORD: tripper
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tripper -d tripper_test"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      TRIPPER_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@127.0.0.1:5432/tripper_test
+      TRIPPER_TEST_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@127.0.0.1:5432/tripper_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --extra test
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy tripper_api
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
+      - run: uv run pytest
