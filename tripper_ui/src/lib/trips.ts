@@ -25,21 +25,43 @@ export interface PublicTrip extends NewTrip {
   id: string;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+  ) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const csrf = init?.method && init.method !== "GET" ? sessionCsrfToken() : undefined;
   const response = await fetch(path, {
     ...init,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
       ...init?.headers,
     },
   });
 
   if (!response.ok) {
-    throw new Error(
+    const body = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? `http_${response.status}`,
       response.status === 401
         ? "Sign in to manage your trips."
-        : "Something went wrong. Please try again.",
+        : (body?.error?.message ?? "Something went wrong. Please try again."),
     );
   }
 
@@ -60,3 +82,4 @@ export function createTrip(trip: NewTrip): Promise<TripSummary> {
 export function loadPublicTrip(tripId: string): Promise<PublicTrip> {
   return apiRequest<PublicTrip>(`/api/trips/${encodeURIComponent(tripId)}`);
 }
+import { sessionCsrfToken } from "./auth";

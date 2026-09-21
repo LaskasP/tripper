@@ -1,11 +1,13 @@
 import "./MyTrips.css";
 import {
   createTrip,
+  ApiError,
   loadMyTrips,
   loadPublicTrip,
   type NewTrip,
   type TripSummary,
 } from "../../lib/trips";
+import { renderGoogleSignIn, signOut } from "../../lib/auth";
 
 function field(
   labelText: string,
@@ -173,7 +175,18 @@ export async function renderMyTrips(app: HTMLElement): Promise<void> {
   createButton.className = "my-trips__button";
   createButton.type = "button";
   createButton.textContent = "Create trip";
-  header.append(title, createButton);
+  const signOutButton = document.createElement("button");
+  signOutButton.className = "my-trips__button my-trips__button--secondary";
+  signOutButton.type = "button";
+  signOutButton.textContent = "Sign out";
+  signOutButton.addEventListener("click", async () => {
+    await signOut();
+    await renderMyTrips(app);
+  });
+  const actions = document.createElement("div");
+  actions.className = "my-trips__actions";
+  actions.append(createButton, signOutButton);
+  header.append(title, actions);
 
   const status = document.createElement("p");
   status.className = "my-trips__status";
@@ -201,6 +214,24 @@ export async function renderMyTrips(app: HTMLElement): Promise<void> {
     }
     trips.forEach(addTrip);
   } catch (caught) {
+    if (caught instanceof ApiError && caught.status === 401) {
+      createButton.remove();
+      signOutButton.remove();
+      status.className = "my-trips__sign-in";
+      status.textContent = "Sign in with Google to see your trips.";
+      const googleButton = document.createElement("div");
+      page.insertBefore(googleButton, list);
+      try {
+        await renderGoogleSignIn(googleButton, () => void renderMyTrips(app));
+      } catch (signInError) {
+        status.className = "my-trips__status error-message";
+        status.textContent =
+          signInError instanceof Error
+            ? signInError.message
+            : "Google sign-in is unavailable.";
+      }
+      return;
+    }
     status.className = "my-trips__status error-message";
     status.textContent =
       caught instanceof Error

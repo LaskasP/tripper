@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tripper_api.auth.auth_model import Account
 from tripper_api.core.config import Settings
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
 from tripper_api.trip.trip_repository import TripRepository
@@ -49,6 +50,27 @@ async def test_postgresql_rejects_a_second_creator_from_another_session(
     engine = create_async_engine(database_settings.database_url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     trip, destination, creator = trip_records()
+    second_account_id = uuid4()
+
+    async with sessions() as account_session, account_session.begin():
+        account_session.add_all(
+            [
+                Account(
+                    id=creator.account_id,
+                    issuer="test",
+                    subject=str(creator.account_id),
+                    email="creator@example.com",
+                    display_name="Creator",
+                ),
+                Account(
+                    id=second_account_id,
+                    issuer="test",
+                    subject=str(second_account_id),
+                    email="second@example.com",
+                    display_name="Second Creator",
+                ),
+            ]
+        )
 
     async with sessions() as first_session, first_session.begin():
         await TripRepository(first_session).add(trip, destination, creator)
@@ -56,7 +78,7 @@ async def test_postgresql_rejects_a_second_creator_from_another_session(
     second_creator = TripMembership(
         id=uuid4(),
         trip_id=trip.id,
-        account_id=uuid4(),
+        account_id=second_account_id,
         role=TripRole.CREATOR,
     )
     with pytest.raises(IntegrityError):

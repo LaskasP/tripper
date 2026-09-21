@@ -46,7 +46,7 @@ def database_settings() -> Iterator[Settings]:
     config = Config("alembic.ini")
     config.attributes["database_url"] = database_url
     command.upgrade(config, "head")
-    yield Settings(database_url=database_url)
+    yield Settings(database_url=database_url, google_client_id="test-client-id")
 
 
 @pytest_asyncio.fixture
@@ -56,7 +56,10 @@ async def clean_database(
     engine = create_async_engine(database_settings.database_url)
     async with engine.begin() as connection:
         await connection.execute(
-            text("TRUNCATE TABLE trip_memberships, destinations, trips CASCADE")
+            text(
+                "TRUNCATE TABLE sessions, accounts, trip_memberships, destinations, "
+                "trips CASCADE"
+            )
         )
     await engine.dispose()
     yield

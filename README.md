@@ -28,9 +28,9 @@ npm --prefix tripper_ui run dev
 ```
 
 The existing JSON guide is available at `/tripper/`. My Trips is available at
-`/tripper/my-trips` once an authentication integration supplies the current user.
-The production authentication dependency deliberately returns `401` until that later
-decision is implemented. PostgreSQL is the only backend store; application startup
+`/tripper/my-trips`; configure `TRIPPER_GOOGLE_CLIENT_ID` for its direct Google
+sign-in. Tripper stores opaque, seven-day server-side Sessions and never stores Google
+access or refresh tokens. PostgreSQL is the only backend store; application startup
 never creates or migrates schemas.
 
 Run the complete application with Docker Compose:

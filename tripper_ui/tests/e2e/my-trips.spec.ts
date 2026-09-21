@@ -1,7 +1,22 @@
 import { expect, test } from '@playwright/test';
 
 test('user creates a trip and finds it in My Trips as creator', async ({ page }) => {
+  await page.addInitScript(() => {
+    let googleCallback: (response: { credential: string }) => void;
+    window.google = { accounts: { id: {
+      initialize(options) { googleCallback = options.callback; },
+      renderButton(element) {
+        const button = document.createElement('button');
+        button.textContent = 'Sign in with Google';
+        button.addEventListener('click', () => {
+          googleCallback({ credential: 'e2e-google-credential' });
+        });
+        element.appendChild(button);
+      },
+    } } };
+  });
   await page.goto('/tripper/my-trips');
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
 
   await expect(page.getByRole('heading', { name: 'My Trips' })).toBeVisible();
   await expect(page.getByText('You have no trips yet.')).toBeVisible();
@@ -29,4 +44,8 @@ test('user creates a trip and finds it in My Trips as creator', async ({ page })
   await persistedTrip.click();
   await expect(page.getByRole('heading', { name: 'Greek Islands 2027' })).toBeVisible();
   await expect(page.getByText('No days planned yet.')).toBeVisible();
+
+  await page.goto('/tripper/my-trips');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByText('Sign in with Google to see your trips.')).toBeVisible();
 });

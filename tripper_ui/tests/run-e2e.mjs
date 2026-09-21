@@ -11,6 +11,7 @@ const testEnvironment = {
   PYTHONPATH: repositoryRoot,
   TRIPPER_DATABASE_URL: databaseUrl,
   TRIPPER_TEST_DATABASE_URL: databaseUrl,
+  TRIPPER_GOOGLE_CLIENT_ID: 'test-client-id',
 };
 const python = path.join(
   repositoryRoot,

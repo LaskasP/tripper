@@ -5,12 +5,35 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from tripper_api.auth.google_identity import InvalidGoogleCredentialError
+from tripper_api.core.security import AuthenticationRequiredError, CsrfValidationError
 from tripper_api.trip.trip_service import TripNotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AuthenticationRequiredError)
+    async def authentication_required(
+        request: Request, exc: AuthenticationRequiredError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(401, "authentication_required", "Authentication required")
+
+    @app.exception_handler(CsrfValidationError)
+    async def csrf_validation_failed(
+        request: Request, exc: CsrfValidationError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(403, "csrf_validation_failed", "CSRF validation failed")
+
+    @app.exception_handler(InvalidGoogleCredentialError)
+    async def invalid_google_credential(
+        request: Request, exc: InvalidGoogleCredentialError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(401, "invalid_google_credential", "Google sign-in failed")
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(
         request: Request, exc: RequestValidationError

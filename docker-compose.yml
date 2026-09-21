@@ -21,6 +21,7 @@ services:
     environment:
       TRIPPER_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@postgres:5432/tripper
       TRIPPER_DATABASE_ECHO: "false"
+      TRIPPER_GOOGLE_CLIENT_ID: ${TRIPPER_GOOGLE_CLIENT_ID:-replace-me.apps.googleusercontent.com}
     depends_on:
       postgres:
         condition: service_healthy

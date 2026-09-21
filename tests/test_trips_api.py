@@ -5,6 +5,8 @@ import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from tripper_api.app import create_app
 from tripper_api.core.config import Settings
@@ -35,10 +37,25 @@ async def app_client(
     settings: Settings,
     user: dict[str, str] | None = None,
 ) -> AsyncIterator[tuple[AsyncClient, FastAPI]]:
+    if user is not None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO accounts (id, issuer, subject, email, display_name) "
+                    "VALUES (:id, 'test', :subject, 'test@example.com', 'Test User') "
+                    "ON CONFLICT (id) DO NOTHING"
+                ),
+                {"id": UUID(user["id"]), "subject": user["id"]},
+            )
+        await engine.dispose()
     app = create_app(settings)
     if user is not None:
         app.dependency_overrides[require_current_user] = lambda: AuthenticatedUser(
-            id=UUID(user["id"])
+            id=UUID(user["id"]),
+            session_id=UUID("00000000-0000-0000-0000-000000000001"),
+            email="test@example.com",
+            display_name="Test User",
         )
 
     async with (

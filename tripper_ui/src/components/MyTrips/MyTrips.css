@@ -29,6 +29,21 @@
   cursor: pointer;
 }
 
+.my-trips__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.my-trips__button--secondary {
+  background: transparent;
+  color: #fff;
+}
+
+.my-trips__sign-in {
+  margin-bottom: 1rem;
+  color: var(--color-muted);
+}
+
 .my-trips__empty,
 .my-trips__status {
   color: var(--color-muted);
