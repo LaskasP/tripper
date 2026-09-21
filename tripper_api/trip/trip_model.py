@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -21,7 +22,12 @@ from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tripper_api.core.models import Base
-from tripper_api.trip.trip_domain import TripRole
+
+
+class TripRole(StrEnum):
+    CREATOR = "creator"
+    CONTRIBUTOR = "contributor"
+    TRAVELLER = "traveller"
 
 
 class Trip(Base):

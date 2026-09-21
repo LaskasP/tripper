@@ -2,13 +2,12 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.trip.trip_domain import TripRole
 from tripper_api.trip.trip_dto import (
     PublicTripResponse,
     TripCreateRequest,
     TripSummaryResponse,
 )
-from tripper_api.trip.trip_model import Destination, Trip, TripMembership
+from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
 from tripper_api.trip.trip_repository import TripRepository
 
 

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tripper_api.trip.trip_domain import TripRole
+from tripper_api.trip.trip_model import TripRole
 
 
 class LocationInput(BaseModel):

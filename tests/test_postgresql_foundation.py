@@ -7,8 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tripper_api.core.config import Settings
-from tripper_api.trip.trip_domain import TripRole
-from tripper_api.trip.trip_model import Destination, Trip, TripMembership
+from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
 from tripper_api.trip.trip_repository import TripRepository
 
 pytestmark = [
