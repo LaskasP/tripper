@@ -1,14 +1,11 @@
+from datetime import date
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.trip.trip_domain import CreateTrip, TripRole
+from tripper_api.trip.trip_domain import ParticipantTrip, PublicTripView, TripRole
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership
-from tripper_api.trip.trip_repository import (
-    StoredParticipantTrip,
-    StoredTrip,
-    TripRepository,
-)
+from tripper_api.trip.trip_repository import TripRepository
 
 
 class TripNotFoundError(Exception):
@@ -21,23 +18,34 @@ class TripService:
         self._repository = repository
 
     async def create(
-        self, trip_input: CreateTrip, account_id: UUID
-    ) -> StoredParticipantTrip:
+        self,
+        *,
+        account_id: UUID,
+        name: str,
+        destination_name: str,
+        short_name: str,
+        description: str,
+        timezone: str,
+        latitude: float,
+        longitude: float,
+        start_date: date,
+        end_date: date,
+    ) -> ParticipantTrip:
         trip = Trip(
             id=uuid4(),
-            name=trip_input.name,
-            short_name=trip_input.short_name,
-            description=trip_input.description,
-            start_date=trip_input.start_date,
-            end_date=trip_input.end_date,
+            name=name,
+            short_name=short_name,
+            description=description,
+            start_date=start_date,
+            end_date=end_date,
         )
         destination = Destination(
             id=uuid4(),
             trip_id=trip.id,
-            name=trip_input.destination,
-            timezone=trip_input.timezone,
-            latitude=trip_input.latitude,
-            longitude=trip_input.longitude,
+            name=destination_name,
+            timezone=timezone,
+            latitude=latitude,
+            longitude=longitude,
             position=0,
         )
         membership = TripMembership(
@@ -48,15 +56,23 @@ class TripService:
         )
         async with self._session.begin():
             await self._repository.add(trip, destination, membership)
-        return StoredParticipantTrip(trip, destination, membership.role)
+        return ParticipantTrip(
+            id=trip.id,
+            name=trip.name,
+            destination=destination.name,
+            short_name=trip.short_name,
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            role=membership.role,
+        )
 
-    async def list_for_account(self, account_id: UUID) -> list[StoredParticipantTrip]:
+    async def list_for_account(self, account_id: UUID) -> list[ParticipantTrip]:
         async with self._session.begin():
             return await self._repository.list_for_account(account_id)
 
-    async def get_public(self, trip_id: UUID) -> StoredTrip:
+    async def get_public(self, trip_id: UUID) -> PublicTripView:
         async with self._session.begin():
-            stored_trip = await self._repository.get(trip_id)
-        if stored_trip is None:
+            trip = await self._repository.get_public(trip_id)
+        if trip is None:
             raise TripNotFoundError
-        return stored_trip
+        return trip
