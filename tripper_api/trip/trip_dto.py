@@ -13,7 +13,7 @@ class LocationInput(BaseModel):
     lng: float = Field(ge=-180, le=180)
 
 
-class TripInput(BaseModel):
+class TripCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=200)
@@ -26,14 +26,14 @@ class TripInput(BaseModel):
     end_date: date = Field(alias="endDate")
 
     @model_validator(mode="after")
-    def validate_date_range(self) -> "TripInput":
+    def validate_date_range(self) -> "TripCreateRequest":
         if self.start_date > self.end_date:
             raise ValueError("startDate must be on or before endDate")
         return self
 
 
-class TripSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class TripSummaryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     id: UUID
     name: str
@@ -44,7 +44,7 @@ class TripSummary(BaseModel):
     role: TripRole
 
 
-class PublicTrip(BaseModel):
+class PublicTripResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: UUID

@@ -6,13 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.core.database import get_database_session
 from tripper_api.core.security import AuthenticatedUser, require_current_user
-from tripper_api.trip.trip_domain import CreateTrip
-from tripper_api.trip.trip_dto import PublicTrip, TripInput, TripSummary
-from tripper_api.trip.trip_repository import (
-    StoredParticipantTrip,
-    StoredTrip,
-    TripRepository,
+from tripper_api.trip.trip_domain import PublicTripView
+from tripper_api.trip.trip_dto import (
+    PublicTripResponse,
+    TripCreateRequest,
+    TripSummaryResponse,
 )
+from tripper_api.trip.trip_repository import TripRepository
 from tripper_api.trip.trip_service import TripService
 
 router = APIRouter(prefix="/api")
@@ -26,72 +26,55 @@ def get_trip_service(
 
 @router.post(
     "/trips",
-    response_model=TripSummary,
+    response_model=TripSummaryResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_trip(
-    trip: TripInput,
+    trip: TripCreateRequest,
     user: Annotated[AuthenticatedUser, Depends(require_current_user)],
     service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripSummary:
-    stored_trip = await service.create(
-        CreateTrip(
-            name=trip.name,
-            destination=trip.destination,
-            short_name=trip.short_name,
-            description=trip.description,
-            timezone=trip.timezone,
-            latitude=trip.location.lat,
-            longitude=trip.location.lng,
-            start_date=trip.start_date,
-            end_date=trip.end_date,
-        ),
-        user.id,
+) -> TripSummaryResponse:
+    created_trip = await service.create(
+        account_id=user.id,
+        name=trip.name,
+        destination_name=trip.destination,
+        short_name=trip.short_name,
+        description=trip.description,
+        timezone=trip.timezone,
+        latitude=trip.location.lat,
+        longitude=trip.location.lng,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
     )
-    return summary_response(stored_trip)
+    return TripSummaryResponse.model_validate(created_trip)
 
 
-@router.get("/me/trips", response_model=list[TripSummary])
+@router.get("/me/trips", response_model=list[TripSummaryResponse])
 async def list_my_trips(
     user: Annotated[AuthenticatedUser, Depends(require_current_user)],
     service: Annotated[TripService, Depends(get_trip_service)],
-) -> list[TripSummary]:
-    stored_trips = await service.list_for_account(user.id)
-    return [summary_response(stored_trip) for stored_trip in stored_trips]
+) -> list[TripSummaryResponse]:
+    trips = await service.list_for_account(user.id)
+    return [TripSummaryResponse.model_validate(trip) for trip in trips]
 
 
-@router.get("/trips/{trip_id}", response_model=PublicTrip)
+@router.get("/trips/{trip_id}", response_model=PublicTripResponse)
 async def get_public_trip(
     trip_id: UUID,
     service: Annotated[TripService, Depends(get_trip_service)],
-) -> PublicTrip:
+) -> PublicTripResponse:
     return public_response(await service.get_public(trip_id))
 
 
-def summary_response(stored_trip: StoredParticipantTrip) -> TripSummary:
-    trip = stored_trip.trip
-    return TripSummary(
+def public_response(trip: PublicTripView) -> PublicTripResponse:
+    return PublicTripResponse(
         id=trip.id,
         name=trip.name,
-        destination=stored_trip.destination.name,
-        short_name=trip.short_name,
-        start_date=trip.start_date,
-        end_date=trip.end_date,
-        role=stored_trip.role,
-    )
-
-
-def public_response(stored_trip: StoredTrip) -> PublicTrip:
-    trip = stored_trip.trip
-    destination = stored_trip.destination
-    return PublicTrip(
-        id=trip.id,
-        name=trip.name,
-        destination=destination.name,
+        destination=trip.destination,
         short_name=trip.short_name,
         description=trip.description,
-        timezone=destination.timezone,
-        location={"lat": destination.latitude, "lng": destination.longitude},
+        timezone=trip.timezone,
+        location={"lat": trip.latitude, "lng": trip.longitude},
         start_date=trip.start_date,
         end_date=trip.end_date,
     )

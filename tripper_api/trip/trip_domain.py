@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from uuid import UUID
 
 
 class TripRole(StrEnum):
@@ -10,13 +11,25 @@ class TripRole(StrEnum):
 
 
 @dataclass(frozen=True)
-class CreateTrip:
+class ParticipantTrip:
+    id: UUID
+    name: str
+    destination: str
+    short_name: str
+    start_date: date
+    end_date: date
+    role: TripRole
+
+
+@dataclass(frozen=True)
+class PublicTripView:
+    id: UUID
     name: str
     destination: str
     short_name: str
     description: str
     timezone: str
-    latitude: float
-    longitude: float
+    latitude: float | None
+    longitude: float | None
     start_date: date
     end_date: date
