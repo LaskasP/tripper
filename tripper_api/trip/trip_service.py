@@ -1,9 +1,13 @@
-from datetime import date
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.trip.trip_domain import ParticipantTrip, PublicTripView, TripRole
+from tripper_api.trip.trip_domain import TripRole
+from tripper_api.trip.trip_dto import (
+    PublicTripResponse,
+    TripCreateRequest,
+    TripSummaryResponse,
+)
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership
 from tripper_api.trip.trip_repository import TripRepository
 
@@ -21,31 +25,23 @@ class TripService:
         self,
         *,
         account_id: UUID,
-        name: str,
-        destination_name: str,
-        short_name: str,
-        description: str,
-        timezone: str,
-        latitude: float,
-        longitude: float,
-        start_date: date,
-        end_date: date,
-    ) -> ParticipantTrip:
+        request: TripCreateRequest,
+    ) -> TripSummaryResponse:
         trip = Trip(
             id=uuid4(),
-            name=name,
-            short_name=short_name,
-            description=description,
-            start_date=start_date,
-            end_date=end_date,
+            name=request.name,
+            short_name=request.short_name,
+            description=request.description,
+            start_date=request.start_date,
+            end_date=request.end_date,
         )
         destination = Destination(
             id=uuid4(),
             trip_id=trip.id,
-            name=destination_name,
-            timezone=timezone,
-            latitude=latitude,
-            longitude=longitude,
+            name=request.destination,
+            timezone=request.timezone,
+            latitude=request.location.lat,
+            longitude=request.location.lng,
             position=0,
         )
         membership = TripMembership(
@@ -56,7 +52,7 @@ class TripService:
         )
         async with self._session.begin():
             await self._repository.add(trip, destination, membership)
-        return ParticipantTrip(
+        return TripSummaryResponse(
             id=trip.id,
             name=trip.name,
             destination=destination.name,
@@ -66,11 +62,11 @@ class TripService:
             role=membership.role,
         )
 
-    async def list_for_account(self, account_id: UUID) -> list[ParticipantTrip]:
+    async def list_for_account(self, account_id: UUID) -> list[TripSummaryResponse]:
         async with self._session.begin():
             return await self._repository.list_for_account(account_id)
 
-    async def get_public(self, trip_id: UUID) -> PublicTripView:
+    async def get_public(self, trip_id: UUID) -> PublicTripResponse:
         async with self._session.begin():
             trip = await self._repository.get_public(trip_id)
         if trip is None:

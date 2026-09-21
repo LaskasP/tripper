@@ -3,7 +3,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.trip.trip_domain import ParticipantTrip, PublicTripView
+from tripper_api.trip.trip_dto import (
+    LocationInput,
+    PublicTripResponse,
+    TripSummaryResponse,
+)
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership
 
 
@@ -22,7 +26,7 @@ class TripRepository:
         self._session.add_all((destination, membership))
         await self._session.flush()
 
-    async def list_for_account(self, account_id: UUID) -> list[ParticipantTrip]:
+    async def list_for_account(self, account_id: UUID) -> list[TripSummaryResponse]:
         statement = (
             select(
                 Trip.id,
@@ -42,9 +46,20 @@ class TripRepository:
             .order_by(Trip.created_at, Trip.id)
         )
         rows = (await self._session.execute(statement)).tuples().all()
-        return [ParticipantTrip(*row) for row in rows]
+        return [
+            TripSummaryResponse(
+                id=row[0],
+                name=row[1],
+                destination=row[2],
+                short_name=row[3],
+                start_date=row[4],
+                end_date=row[5],
+                role=row[6],
+            )
+            for row in rows
+        ]
 
-    async def get_public(self, trip_id: UUID) -> PublicTripView | None:
+    async def get_public(self, trip_id: UUID) -> PublicTripResponse | None:
         statement = (
             select(
                 Trip.id,
@@ -65,4 +80,16 @@ class TripRepository:
             .where(Trip.id == trip_id)
         )
         row = (await self._session.execute(statement)).tuples().one_or_none()
-        return None if row is None else PublicTripView(*row)
+        if row is None:
+            return None
+        return PublicTripResponse(
+            id=row[0],
+            name=row[1],
+            destination=row[2],
+            short_name=row[3],
+            description=row[4],
+            timezone=row[5],
+            location=LocationInput(lat=row[6], lng=row[7]),
+            start_date=row[8],
+            end_date=row[9],
+        )
