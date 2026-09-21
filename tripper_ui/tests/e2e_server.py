@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import Path
 from uuid import UUID
 
 import uvicorn
@@ -9,6 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from tripper_api.app import create_app
 from tripper_api.core.config import Settings
 from tripper_api.core.security import AuthenticatedUser, require_current_user
+
+UI_ROOT = Path(__file__).resolve().parents[1]
+DIST_DIR = UI_ROOT / "dist"
 
 settings = Settings(
     database_url=os.getenv(
@@ -24,10 +28,10 @@ app.dependency_overrides[require_current_user] = lambda: AuthenticatedUser(
 
 @app.get("/tripper/my-trips", include_in_schema=False)
 def my_trips_page() -> FileResponse:
-    return FileResponse("dist/index.html")
+    return FileResponse(DIST_DIR / "index.html")
 
 
-app.mount("/tripper", StaticFiles(directory="dist", html=True), name="frontend")
+app.mount("/tripper", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
 
 
 if __name__ == "__main__":

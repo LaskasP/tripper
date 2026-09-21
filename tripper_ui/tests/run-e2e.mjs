@@ -4,19 +4,23 @@ import path from 'node:path';
 
 const databaseUrl =
   'postgresql+psycopg_async://tripper:tripper@127.0.0.1:55432/tripper_test';
+const uiRoot = process.cwd();
+const repositoryRoot = path.resolve(uiRoot, '..');
 const testEnvironment = {
   ...process.env,
+  PYTHONPATH: repositoryRoot,
   TRIPPER_DATABASE_URL: databaseUrl,
   TRIPPER_TEST_DATABASE_URL: databaseUrl,
 };
 const python = path.join(
-  process.cwd(),
+  repositoryRoot,
   '.venv',
   process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
 );
 
 function run(command, args) {
   const result = spawnSync(command, args, {
+    cwd: repositoryRoot,
     env: testEnvironment,
     stdio: 'inherit',
   });
@@ -28,8 +32,8 @@ run('python', ['-m', 'uv', 'run', 'alembic', 'upgrade', 'head']);
 
 const api = spawn(
   python,
-  ['-m', 'tests.e2e_server'],
-  { env: testEnvironment, stdio: 'inherit' },
+  [path.join(uiRoot, 'tests', 'e2e_server.py')],
+  { cwd: repositoryRoot, env: testEnvironment, stdio: 'inherit' },
 );
 
 async function waitForApi() {
@@ -68,6 +72,7 @@ try {
   api.kill();
   await new Promise((resolve) => api.once('exit', resolve));
   spawnSync('docker', ['compose', '-f', 'compose.test.yml', 'down', '--volumes'], {
+    cwd: repositoryRoot,
     stdio: 'inherit',
   });
 }

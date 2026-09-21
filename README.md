@@ -10,7 +10,7 @@ Install locked backend dependencies and frontend dependencies:
 ```powershell
 python -m pip install uv
 python -m uv sync --locked --extra test
-npm install
+npm --prefix tripper_ui install
 ```
 
 Copy `.env.example` to `.env`, replace its placeholder password, create the named
@@ -24,7 +24,7 @@ Run the API and frontend in separate terminals:
 
 ```powershell
 python -m uv run uvicorn tripper_api.main:app --reload
-npm run dev
+npm --prefix tripper_ui run dev
 ```
 
 The existing JSON guide is available at `/tripper/`. My Trips is available at
@@ -41,7 +41,7 @@ python -m uv run ruff format --check .
 python -m uv run ruff check .
 python -m uv run mypy tripper_api
 python -m uv run pytest
-npm run test:e2e
+npm --prefix tripper_ui run test:e2e
 ```
 
 The backend and end-to-end suites use the isolated `tripper_test` database on
