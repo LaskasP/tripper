@@ -4,21 +4,21 @@ export interface TripSummary {
   id: string;
   name: string;
   destination: string;
-  shortName: string;
-  startDate: string;
-  endDate: string;
+  short_name: string;
+  start_date: string;
+  end_date: string;
   role: TripRole;
 }
 
 export interface NewTrip {
   name: string;
   destination: string;
-  shortName: string;
+  short_name: string;
   description: string;
   timezone: string;
   location: { lat: number; lng: number };
-  startDate: string;
-  endDate: string;
+  start_date: string;
+  end_date: string;
 }
 
 export interface PublicTrip extends NewTrip {

@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: tripper
+      POSTGRES_USER: tripper
+      POSTGRES_PASSWORD: tripper
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripper -d tripper"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    environment:
+      TRIPPER_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@postgres:5432/tripper
+      TRIPPER_DATABASE_ECHO: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >-
+      sh -c "alembic upgrade head &&
+      uvicorn tripper_api.main:app --host 0.0.0.0 --port 8000"
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ui
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres_data:

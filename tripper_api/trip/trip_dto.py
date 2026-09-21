@@ -18,17 +18,17 @@ class TripCreateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     destination: str = Field(min_length=1, max_length=200)
-    short_name: str = Field(alias="shortName", min_length=1, max_length=80)
+    short_name: str = Field(min_length=1, max_length=80)
     description: str
     timezone: str = Field(min_length=1, max_length=100)
     location: LocationInput
-    start_date: date = Field(alias="startDate")
-    end_date: date = Field(alias="endDate")
+    start_date: date
+    end_date: date
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "TripCreateRequest":
         if self.start_date > self.end_date:
-            raise ValueError("startDate must be on or before endDate")
+            raise ValueError("start_date must be on or before end_date")
         return self
 
 
@@ -38,9 +38,9 @@ class TripSummaryResponse(BaseModel):
     id: UUID
     name: str
     destination: str
-    short_name: str = Field(serialization_alias="shortName")
-    start_date: date = Field(serialization_alias="startDate")
-    end_date: date = Field(serialization_alias="endDate")
+    short_name: str
+    start_date: date
+    end_date: date
     role: TripRole
 
 
@@ -50,9 +50,9 @@ class PublicTripResponse(BaseModel):
     id: UUID
     name: str
     destination: str
-    short_name: str = Field(serialization_alias="shortName")
+    short_name: str
     description: str
     timezone: str
     location: LocationInput
-    start_date: date = Field(serialization_alias="startDate")
-    end_date: date = Field(serialization_alias="endDate")
+    start_date: date
+    end_date: date

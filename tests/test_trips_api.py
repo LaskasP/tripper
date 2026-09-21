@@ -19,12 +19,12 @@ pytestmark = [
 TRIP = {
     "name": "Greek Islands 2027",
     "destination": "Cyclades",
-    "shortName": "Greek Islands",
+    "short_name": "Greek Islands",
     "description": "A week through the Cyclades",
     "timezone": "Europe/Athens",
     "location": {"lat": 37.4467, "lng": 25.3289},
-    "startDate": "2027-06-10",
-    "endDate": "2027-06-17",
+    "start_date": "2027-06-10",
+    "end_date": "2027-06-17",
 }
 
 ALEX_ID = "a7bff584-bfcd-4d4a-86f8-ece48870e67a"
@@ -66,9 +66,9 @@ async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
             "id": created.json()["id"],
             "name": "Greek Islands 2027",
             "destination": "Cyclades",
-            "shortName": "Greek Islands",
-            "startDate": "2027-06-10",
-            "endDate": "2027-06-17",
+            "short_name": "Greek Islands",
+            "start_date": "2027-06-10",
+            "end_date": "2027-06-17",
             "role": "creator",
         }
     ]

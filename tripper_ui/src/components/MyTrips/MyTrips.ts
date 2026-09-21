@@ -38,7 +38,7 @@ function tripCard(trip: TripSummary): HTMLLIElement {
 
   const dates = document.createElement('span');
   dates.className = 'my-trips__card-dates';
-  dates.textContent = `${trip.startDate} – ${trip.endDate}`;
+  dates.textContent = `${trip.start_date} – ${trip.end_date}`;
 
   const role = document.createElement('span');
   role.className = 'my-trips__role';
@@ -75,7 +75,7 @@ function newTripDialog(onCreated: (trip: TripSummary) => void): HTMLDialogElemen
 
   const dates = document.createElement('div');
   dates.className = 'trip-form__dates';
-  dates.append(field('Start date', 'startDate', 'date'), field('End date', 'endDate', 'date'));
+  dates.append(field('Start date', 'start_date', 'date'), field('End date', 'end_date', 'date'));
 
   const error = document.createElement('p');
   error.className = 'error-message';
@@ -95,7 +95,7 @@ function newTripDialog(onCreated: (trip: TripSummary) => void): HTMLDialogElemen
   form.append(
     title,
     field('Trip name', 'name'),
-    field('Short name', 'shortName'),
+    field('Short name', 'short_name'),
     field('Destination', 'destination'),
     description,
     field('Timezone', 'timezone'),
@@ -112,7 +112,7 @@ function newTripDialog(onCreated: (trip: TripSummary) => void): HTMLDialogElemen
     const data = new FormData(form);
     const trip: NewTrip = {
       name: String(data.get('name')),
-      shortName: String(data.get('shortName')),
+      short_name: String(data.get('short_name')),
       destination: String(data.get('destination')),
       description: String(data.get('description')),
       timezone: String(data.get('timezone')),
@@ -120,8 +120,8 @@ function newTripDialog(onCreated: (trip: TripSummary) => void): HTMLDialogElemen
         lat: Number(data.get('latitude')),
         lng: Number(data.get('longitude')),
       },
-      startDate: String(data.get('startDate')),
-      endDate: String(data.get('endDate')),
+      start_date: String(data.get('start_date')),
+      end_date: String(data.get('end_date')),
     };
 
     try {
@@ -200,7 +200,7 @@ export async function renderSelectedTrip(app: HTMLElement, tripId: string): Prom
 
   try {
     const trip = await loadPublicTrip(tripId);
-    document.title = trip.shortName;
+    document.title = trip.short_name;
 
     const page = document.createElement('main');
     page.className = 'empty-trip';

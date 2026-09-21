@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   }
 
   // Update page metadata from trip config
-  document.title = trip.shortName;
+  document.title = trip.short_name;
   const metaDesc = document.querySelector('meta[name="description"]');
   if (metaDesc) metaDesc.setAttribute('content', trip.description);
 
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   try {
     const weatherMap = await fetchWeather(
       trip.location.lat, trip.location.lng,
-      trip.startDate, trip.endDate, trip.timezone,
+      trip.start_date, trip.end_date, trip.timezone,
     );
     for (const day of days) {
       const w = weatherMap.get(day.date);

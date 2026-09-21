@@ -6,12 +6,12 @@ export interface Location {
 export interface TripConfig {
   name: string;
   destination: string;
-  shortName: string;
+  short_name: string;
   description: string;
   timezone: string;
   location: Location;
-  startDate: string;
-  endDate: string;
+  start_date: string;
+  end_date: string;
 }
 
 export interface TimelineEntry {

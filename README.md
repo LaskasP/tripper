@@ -23,7 +23,7 @@ python -m uv run alembic upgrade head
 Run the API and frontend in separate terminals:
 
 ```powershell
-python -m uv run uvicorn tripper_api.main:app --reload
+python run.py
 npm --prefix tripper_ui run dev
 ```
 
@@ -32,6 +32,18 @@ The existing JSON guide is available at `/tripper/`. My Trips is available at
 The production authentication dependency deliberately returns `401` until that later
 decision is implemented. PostgreSQL is the only backend store; application startup
 never creates or migrates schemas.
+
+Run the complete application with Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+Open the UI at `http://localhost:8080/tripper/` and the API docs at
+`http://localhost:8080/docs`.
+
+Stop the stack with `docker compose down`. Add `-v` to also remove the local
+PostgreSQL volume.
 
 ## Verification
 
