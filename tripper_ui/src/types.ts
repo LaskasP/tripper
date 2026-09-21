@@ -22,7 +22,7 @@ export interface TimelineEntry {
   locationName?: string;
 }
 
-export type BookingPlatform = 'booking.com' | 'airbnb';
+export type BookingPlatform = "booking.com" | "airbnb";
 
 export interface Stay {
   name: string;
