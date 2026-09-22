@@ -108,3 +108,29 @@ async def test_failed_multi_record_write_rolls_back_the_whole_trip(
 
     await engine.dispose()
     assert persisted_trip is None
+
+
+async def test_postgresql_rejects_a_partial_destination_location(
+    database_settings: Settings,
+) -> None:
+    engine = create_async_engine(database_settings.database_url)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    trip, destination, creator = trip_records()
+    destination.latitude = 37.9838
+
+    async with sessions() as account_session, account_session.begin():
+        account_session.add(
+            Account(
+                id=creator.account_id,
+                issuer="test",
+                subject=str(creator.account_id),
+                email="creator@example.com",
+                display_name="Creator",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        async with sessions() as write_session, write_session.begin():
+            await TripRepository(write_session).add(trip, destination, creator)
+
+    await engine.dispose()

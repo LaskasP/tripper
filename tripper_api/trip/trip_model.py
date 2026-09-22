@@ -57,6 +57,10 @@ class Destination(Base):
     __tablename__ = "destinations"
     __table_args__ = (
         CheckConstraint("position >= 0", name="nonnegative_destination_position"),
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL)",
+            name="complete_destination_location",
+        ),
         CheckConstraint("revision > 0", name="positive_destination_revision"),
         UniqueConstraint("trip_id", "position", name="uq_destination_trip_position"),
     )
