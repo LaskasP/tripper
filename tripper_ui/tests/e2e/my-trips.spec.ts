@@ -77,9 +77,7 @@ test('user creates a trip and finds it in My Trips as creator', async ({ page })
   await expect(page.getByText('Sign in with Google to see your trips.')).toBeVisible();
 });
 
-test('participant guide renders canonical API content without loading legacy JSON', async ({ page }) => {
-  const requestedPaths: string[] = [];
-  page.on('request', (request) => requestedPaths.push(new URL(request.url()).pathname));
+test('participant guide renders canonical API content', async ({ page }) => {
   await page.route('**/api/trips/imported', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -129,8 +127,6 @@ test('participant guide renders canonical API content without loading legacy JSO
   await expect(page.getByText('Arrive at LAX')).toBeVisible();
   await expect(page.getByText('Fashion Loft')).toBeVisible();
   await expect(page.getByAltText('Downtown LA skyline')).toBeVisible();
-  expect(requestedPaths).not.toContain('/tripper/data/trip.json');
-  expect(requestedPaths).not.toContain('/tripper/data/days.json');
 });
 
 test('creator edits Trip details and ordered destinations in the planner', async ({ page }) => {
@@ -163,7 +159,7 @@ test('creator edits Trip details and ordered destinations in the planner', async
   const tripName = page.getByLabel('Trip name');
   await tripName.fill('');
   await tripName.press('Tab');
-  await expect(page.getByText('Trip name is required.')).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Trip name is required.');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(tripName).toBeFocused();
   await tripName.fill('Aegean summer');

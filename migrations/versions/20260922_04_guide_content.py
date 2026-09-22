@@ -1,7 +1,7 @@
-"""Add canonical guide content and legacy import history.
+"""Add canonical guide content.
 
-The migration only adds empty tables. Downgrade deletes imported guide content and
-import history and is therefore destructive.
+The migration only adds empty tables. Downgrade deletes imported guide content and is
+therefore destructive.
 
 Revision ID: 20260922_04
 Revises: 20260922_03
@@ -113,25 +113,9 @@ def upgrade() -> None:
             "daily_plan_id", "position", name="uq_photo_daily_plan_position"
         ),
     )
-    op.create_table(
-        "legacy_imports",
-        sa.Column("import_key", sa.String(length=100), nullable=False),
-        sa.Column("source_sha256", sa.String(length=64), nullable=False),
-        sa.Column("trip_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "imported_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["trip_id"], ["trips.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("import_key"),
-        sa.UniqueConstraint("trip_id", name="uq_legacy_import_trip"),
-    )
 
 
 def downgrade() -> None:
-    op.drop_table("legacy_imports")
     op.drop_table("photos")
     op.drop_table("stays")
     op.drop_table("timeline_entries")

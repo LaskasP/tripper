@@ -27,25 +27,10 @@ python run.py
 npm --prefix tripper_ui run dev
 ```
 
-The checked-in Los Angeles JSON under `legacy_data/los_angeles` is import input only;
-the application never reads or serves it at runtime. My Trips is available at
-`/tripper/my-trips`; configure `TRIPPER_GOOGLE_CLIENT_ID` for its direct Google
-sign-in. Tripper stores opaque, seven-day server-side Sessions and never stores Google
-access or refresh tokens. PostgreSQL is the only runtime store; application startup
-never creates or migrates schemas.
-
-Import the Los Angeles guide for an existing Creator Account after applying migrations.
-The dry-run performs the complete validation and conflict check without writing:
-
-```powershell
-python -m uv run python -m tripper_api.legacy_import --creator-id <account-uuid> --dry-run
-python -m uv run python -m tripper_api.legacy_import --creator-id <account-uuid>
-```
-
-The command pins the reviewed source hash, imports all content in one transaction, and
-records import history. An identical rerun is a no-op. The imported guide remains a
-private Draft readable only by current Participants; publication is a separate cutover
-operation.
+My Trips is available at `/tripper/my-trips`; configure
+`TRIPPER_GOOGLE_CLIENT_ID` for direct Google sign-in. Tripper stores opaque, seven-day
+server-side Sessions and never stores Google access or refresh tokens. PostgreSQL is the
+only runtime store; application startup never creates or migrates schemas.
 
 Run the complete application with Docker Compose:
 

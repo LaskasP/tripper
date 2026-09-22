@@ -9,12 +9,10 @@
     "pretest:e2e": "npm run build",
     "test:e2e": "node tests/run-e2e.mjs",
     "preview": "vite preview",
-    "edit-day": "tsx scripts/edit-day.ts",
     "deploy": "tsc && vite build && gh-pages -d dist"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
-    "tsx": "^4.19.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.10"
   }

@@ -207,16 +207,3 @@ class Photo(Base):
     caption: Mapped[str] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer)
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
-
-
-class LegacyImport(Base):
-    __tablename__ = "legacy_imports"
-
-    import_key: Mapped[str] = mapped_column(String(100), primary_key=True)
-    source_sha256: Mapped[str] = mapped_column(String(64))
-    trip_id: Mapped[UUID] = mapped_column(
-        ForeignKey("trips.id", ondelete="CASCADE"), unique=True
-    )
-    imported_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
-    )
