@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -31,6 +31,7 @@ TRIP = {
 
 ALEX_ID = "a7bff584-bfcd-4d4a-86f8-ece48870e67a"
 JAMIE_ID = "83c801db-7558-4f93-bb03-6025479920fc"
+MORGAN_ID = "2a385a2e-8800-4e45-91ea-cbec7e264876"
 
 
 async def app_client(
@@ -66,6 +67,58 @@ async def app_client(
         ) as client,
     ):
         yield client, app
+
+
+async def add_participant(
+    settings: Settings,
+    *,
+    trip_id: str,
+    account_id: str,
+    display_name: str,
+    role: str,
+) -> None:
+    engine = create_async_engine(settings.database_url)
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(
+                "INSERT INTO accounts (id, issuer, subject, email, display_name) "
+                "VALUES (:account_id, 'test', :subject, :email, :display_name)"
+            ),
+            {
+                "account_id": UUID(account_id),
+                "subject": account_id,
+                "email": f"{account_id}@example.com",
+                "display_name": display_name,
+            },
+        )
+        await connection.execute(
+            text(
+                "INSERT INTO trip_memberships (id, trip_id, account_id, role) "
+                "VALUES (:id, :trip_id, :account_id, :role)"
+            ),
+            {
+                "id": uuid4(),
+                "trip_id": UUID(trip_id),
+                "account_id": UUID(account_id),
+                "role": role,
+            },
+        )
+    await engine.dispose()
+
+
+async def remove_participant(
+    settings: Settings, *, trip_id: str, account_id: str
+) -> None:
+    engine = create_async_engine(settings.database_url)
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(
+                "DELETE FROM trip_memberships "
+                "WHERE trip_id = :trip_id AND account_id = :account_id"
+            ),
+            {"trip_id": UUID(trip_id), "account_id": UUID(account_id)},
+        )
+    await engine.dispose()
 
 
 async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
@@ -234,7 +287,50 @@ async def test_created_draft_is_available_only_to_its_participants(
 
     assert participant_trip.status_code == 200
     assert participant_trip.json()["name"] == "Greek Islands 2027"
+    assert participant_trip.json()["calendar"] == [
+        {"date": f"2027-06-{day:02d}", "day_number": day - 9, "is_planned": False}
+        for day in range(10, 18)
+    ]
+    assert participant_trip.json()["roster"] == [
+        {"display_name": "Test User", "role": "creator"}
+    ]
     assert anonymous_trip.status_code == 401
+
+
+async def test_every_participant_role_reads_the_draft_and_current_roster(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        created = await client.post("/api/trips", json=TRIP)
+        trip_id = created.json()["id"]
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+            display_name="Jamie Contributor",
+            role="contributor",
+        )
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=MORGAN_ID,
+            display_name="Morgan Traveller",
+            role="traveller",
+        )
+
+        responses = []
+        for account_id in (ALEX_ID, JAMIE_ID, MORGAN_ID):
+            user["id"] = account_id
+            responses.append(await client.get(f"/api/trips/{trip_id}"))
+
+    assert [response.status_code for response in responses] == [200, 200, 200]
+    expected_roster = [
+        {"display_name": "Test User", "role": "creator"},
+        {"display_name": "Jamie Contributor", "role": "contributor"},
+        {"display_name": "Morgan Traveller", "role": "traveller"},
+    ]
+    assert all(response.json()["roster"] == expected_roster for response in responses)
 
 
 async def test_created_draft_is_hidden_from_a_different_signed_in_user(
@@ -250,6 +346,57 @@ async def test_created_draft_is_hidden_from_a_different_signed_in_user(
     assert hidden_trip.json() == {
         "error": {"code": "trip_not_found", "message": "Trip not found"}
     }
+
+
+async def test_participation_in_another_trip_does_not_reveal_a_draft(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        private_trip = await client.post("/api/trips", json=TRIP)
+
+    async for client, _ in app_client(database_settings, {"id": JAMIE_ID}):
+        other_trip = await client.post(
+            "/api/trips",
+            json={**TRIP, "name": "Jamie's Trip"},
+        )
+        hidden_trip = await client.get(f"/api/trips/{private_trip.json()['id']}")
+
+    assert other_trip.status_code == 201
+    assert hidden_trip.status_code == 404
+
+
+async def test_membership_changes_apply_to_the_next_protected_request(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        created = await client.post("/api/trips", json=TRIP)
+        trip_id = created.json()["id"]
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+            display_name="Jamie Former Participant",
+            role="traveller",
+        )
+
+        user["id"] = JAMIE_ID
+        accepted_participant = await client.get(f"/api/trips/{trip_id}")
+        await remove_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+        )
+        former_participant = await client.get(f"/api/trips/{trip_id}")
+
+        user["id"] = ALEX_ID
+        current_roster = await client.get(f"/api/trips/{trip_id}")
+
+    assert accepted_participant.status_code == 200
+    assert former_participant.status_code == 404
+    assert current_roster.json()["roster"] == [
+        {"display_name": "Test User", "role": "creator"}
+    ]
 
 
 async def test_unexpected_errors_are_logged_without_exposing_details(

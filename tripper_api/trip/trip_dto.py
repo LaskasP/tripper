@@ -63,6 +63,17 @@ class TripSummaryResponse(BaseModel):
     role: TripRole
 
 
+class TripCalendarDateResponse(BaseModel):
+    date: date
+    day_number: int
+    is_planned: bool = False
+
+
+class TripRosterMemberResponse(BaseModel):
+    display_name: str
+    role: TripRole
+
+
 class TripDetailResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -75,3 +86,5 @@ class TripDetailResponse(BaseModel):
     location: LocationInput | None
     start_date: date
     end_date: date
+    calendar: list[TripCalendarDateResponse]
+    roster: list[TripRosterMemberResponse]

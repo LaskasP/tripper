@@ -41,6 +41,10 @@ test('user creates a trip and finds it in My Trips as creator', async ({ page })
   );
   await expect(page.getByRole('button', { name: /June \d+, 2027/ })).toHaveCount(8);
   await expect(page.getByText('Not planned yet')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'People' })).toBeVisible();
+  await expect(page.locator('.trip-planner__roster-item')).toContainText([
+    'E2E TravellerCreator',
+  ]);
 
   await page.goto('/tripper/my-trips');
   const trip = page.getByRole('link', { name: /Greek Islands 2027/ });

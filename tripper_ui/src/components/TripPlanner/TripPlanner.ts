@@ -1,17 +1,6 @@
 import "./TripPlanner.css";
 import { loadParticipantTrip } from "../../lib/trips";
 
-function inclusiveDates(startDate: string, endDate: string): Date[] {
-  const dates: Date[] = [];
-  const current = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  while (current <= end) {
-    dates.push(new Date(current));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}
-
 function formatDateLabel(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
@@ -67,7 +56,8 @@ export async function renderTripPlanner(
       selectedDate.textContent = formatDateLabel(date);
     };
 
-    inclusiveDates(trip.start_date, trip.end_date).forEach((date, index) => {
+    trip.calendar.forEach((calendarDate, index) => {
+      const date = new Date(`${calendarDate.date}T00:00:00Z`);
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = String(date.getUTCDate());
@@ -81,7 +71,27 @@ export async function renderTripPlanner(
     emptyDay.className = "trip-planner__empty-day";
     emptyDay.append(selectedDate, message);
 
-    page.append(back, eyebrow, title, dayNavigation, emptyDay);
+    const people = document.createElement("section");
+    people.className = "trip-planner__people";
+    const peopleTitle = document.createElement("h2");
+    peopleTitle.textContent = "People";
+    const roster = document.createElement("ul");
+    roster.className = "trip-planner__roster";
+    for (const participant of trip.roster) {
+      const item = document.createElement("li");
+      item.className = "trip-planner__roster-item";
+      const name = document.createElement("span");
+      name.textContent = participant.display_name;
+      const role = document.createElement("span");
+      role.className = "trip-planner__role";
+      role.textContent =
+        participant.role[0].toUpperCase() + participant.role.slice(1);
+      item.append(name, role);
+      roster.appendChild(item);
+    }
+    people.append(peopleTitle, roster);
+
+    page.append(back, eyebrow, title, dayNavigation, emptyDay, people);
     app.replaceChildren(page);
   } catch (caught) {
     loading.className = "error";

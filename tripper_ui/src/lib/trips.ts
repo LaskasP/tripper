@@ -31,6 +31,15 @@ export interface TripDetail {
   location: { lat: number; lng: number } | null;
   start_date: string;
   end_date: string;
+  calendar: Array<{
+    date: string;
+    day_number: number;
+    is_planned: boolean;
+  }>;
+  roster: Array<{
+    display_name: string;
+    role: TripRole;
+  }>;
 }
 
 export class ApiError extends Error {

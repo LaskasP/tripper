@@ -2,11 +2,18 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tripper_api.auth.auth_model import Account
 from tripper_api.trip.trip_dto import TripSummaryResponse
-from tripper_api.trip.trip_model import Destination, Trip, TripMembership
+from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
+
+
+@dataclass(frozen=True)
+class TripRosterMemberRecord:
+    display_name: str
+    role: TripRole
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,7 @@ class TripDetailRecord:
     longitude: float | None
     start_date: date
     end_date: date
+    roster: tuple[TripRosterMemberRecord, ...]
 
 
 class TripRepository:
@@ -100,6 +108,21 @@ class TripRepository:
         row = (await self._session.execute(statement)).tuples().one_or_none()
         if row is None:
             return None
+        roster_statement = (
+            select(Account.display_name, TripMembership.role)
+            .join(TripMembership, TripMembership.account_id == Account.id)
+            .where(TripMembership.trip_id == trip_id)
+            .order_by(
+                case(
+                    (TripMembership.role == TripRole.CREATOR, 0),
+                    (TripMembership.role == TripRole.CONTRIBUTOR, 1),
+                    else_=2,
+                ),
+                Account.display_name,
+                TripMembership.account_id,
+            )
+        )
+        roster_rows = (await self._session.execute(roster_statement)).tuples().all()
         return TripDetailRecord(
             id=row[0],
             name=row[1],
@@ -111,4 +134,8 @@ class TripRepository:
             longitude=row[7],
             start_date=row[8],
             end_date=row[9],
+            roster=tuple(
+                TripRosterMemberRecord(display_name=display_name, role=role)
+                for display_name, role in roster_rows
+            ),
         )

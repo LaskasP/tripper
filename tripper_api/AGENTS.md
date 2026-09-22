@@ -41,7 +41,7 @@ Preserve unrelated worktree changes. Prefer correctness and architectural consis
 
 ## API, authorization, and errors
 
-- Treat existing routes, status codes, and camelCase JSON fields as stable contracts. Breaking changes require explicit approval and coordinated client/test updates.
+- Treat existing routes, status codes, and snake_case JSON fields as stable contracts. Breaking changes require explicit approval and coordinated client/test updates.
 - Define explicit Pydantic request and response DTOs. Reject unknown write fields and derive identity, ownership, and roles from trusted server state.
 - Authenticate through FastAPI dependencies; enforce resource-level authorization in the service performing the operation. Management endpoints require authentication; public endpoints must be intentionally public.
 - Authentication overrides belong in tests, never production bypasses.

@@ -43,12 +43,12 @@ export async function renderGoogleSignIn(
 ): Promise<void> {
   const configResponse = await fetch("/api/auth/google/config");
   if (!configResponse.ok) throw new Error("Google sign-in is unavailable.");
-  const config = (await configResponse.json()) as { clientId: string };
+  const config = (await configResponse.json()) as { client_id: string };
   await loadGoogleScript();
   const csrf = crypto.randomUUID();
   document.cookie = `g_csrf_token=${encodeURIComponent(csrf)}; Path=/; Secure; SameSite=Lax`;
   window.google?.accounts.id.initialize({
-    client_id: config.clientId,
+    client_id: config.client_id,
     callback: async ({ credential }) => {
       const form = new URLSearchParams({ credential, g_csrf_token: csrf });
       const response = await fetch("/api/auth/google", {

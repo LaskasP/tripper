@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,19 @@ from tripper_api.trip.trip_dto import (
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
 from tripper_api.trip.trip_repository import TripDetailRecord, TripRepository
+
+
+@dataclass(frozen=True)
+class TripCalendarDateRecord:
+    date: date
+    day_number: int
+    is_planned: bool = False
+
+
+@dataclass(frozen=True)
+class ParticipantTripGuideRecord:
+    trip: TripDetailRecord
+    calendar: tuple[TripCalendarDateRecord, ...]
 
 
 class TripNotFoundError(Exception):
@@ -66,9 +81,18 @@ class TripService:
 
     async def get_for_account(
         self, trip_id: UUID, account_id: UUID
-    ) -> TripDetailRecord:
+    ) -> ParticipantTripGuideRecord:
         async with self._session.begin():
             trip = await self._repository.get_for_account(trip_id, account_id)
         if trip is None:
             raise TripNotFoundError
-        return trip
+        return ParticipantTripGuideRecord(
+            trip=trip,
+            calendar=tuple(
+                TripCalendarDateRecord(
+                    date=trip.start_date + timedelta(days=offset),
+                    day_number=offset + 1,
+                )
+                for offset in range((trip.end_date - trip.start_date).days + 1)
+            ),
+        )

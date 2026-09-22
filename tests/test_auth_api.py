@@ -81,7 +81,7 @@ async def test_google_sign_in_establishes_secure_server_side_session(
     assert response.status_code == 200
     assert response.json() == {
         "account": {
-            "displayName": "Alex Example",
+            "display_name": "Alex Example",
             "email": "alex@example.com",
         }
     }
@@ -105,7 +105,7 @@ async def test_google_sign_in_configuration_exposes_only_the_public_client_id(
         response = await client.get("/api/auth/google/config")
 
     assert response.status_code == 200
-    assert response.json() == {"clientId": "test-client-id"}
+    assert response.json() == {"client_id": "test-client-id"}
 
 
 async def test_google_sign_in_rejects_mismatched_double_submit_csrf(
