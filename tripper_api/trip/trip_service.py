@@ -4,7 +4,11 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
+    DailyPlanResponse,
     LocationInput,
+    PhotoResponse,
+    StayResponse,
+    TimelineEntryResponse,
     TripCalendarDateResponse,
     TripCreateRequest,
     TripDetailResponse,
@@ -17,6 +21,12 @@ from tripper_api.trip.trip_repository import TripRepository
 
 class TripNotFoundError(Exception):
     pass
+
+
+def _location(latitude: float | None, longitude: float | None) -> LocationInput | None:
+    if latitude is None or longitude is None:
+        return None
+    return LocationInput(lat=latitude, lng=longitude)
 
 
 class TripService:
@@ -76,11 +86,7 @@ class TripService:
             trip = await self._repository.load_participant_guide(trip_id, account_id)
         if trip is None:
             raise TripNotFoundError
-        location = (
-            LocationInput(lat=trip.latitude, lng=trip.longitude)
-            if trip.latitude is not None and trip.longitude is not None
-            else None
-        )
+        location = _location(trip.latitude, trip.longitude)
         return TripDetailResponse(
             id=trip.id,
             name=trip.name,
@@ -95,8 +101,49 @@ class TripService:
                 TripCalendarDateResponse(
                     date=trip.start_date + timedelta(days=offset),
                     day_number=offset + 1,
+                    is_planned=any(
+                        plan.date == trip.start_date + timedelta(days=offset)
+                        for plan in trip.daily_plans
+                    ),
                 )
                 for offset in range((trip.end_date - trip.start_date).days + 1)
+            ],
+            daily_plans=[
+                DailyPlanResponse(
+                    date=plan.date,
+                    day_number=(plan.date - trip.start_date).days + 1,
+                    title=plan.title,
+                    summary=plan.summary,
+                    background_image=plan.background_image,
+                    stay=(
+                        StayResponse(
+                            name=plan.stay.name,
+                            address=plan.stay.address,
+                            location=_location(plan.stay.latitude, plan.stay.longitude),
+                            check_in=plan.stay.check_in,
+                            check_out=plan.stay.check_out,
+                            public_listing_url=plan.stay.public_listing_url,
+                            booking_platform=plan.stay.booking_platform,
+                        )
+                        if plan.stay is not None
+                        else None
+                    ),
+                    timeline=[
+                        TimelineEntryResponse(
+                            time=entry.local_time,
+                            title=entry.title,
+                            description=entry.description,
+                            location=_location(entry.latitude, entry.longitude),
+                            location_name=entry.location_name,
+                        )
+                        for entry in plan.timeline
+                    ],
+                    photos=[
+                        PhotoResponse(url=photo.url, caption=photo.caption)
+                        for photo in plan.photos
+                    ],
+                )
+                for plan in trip.daily_plans
             ],
             roster=[
                 TripRosterMemberResponse(display_name=display_name, role=role)

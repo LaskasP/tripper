@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -111,3 +112,111 @@ class TripMembership(Base):
         )
     )
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class DailyPlan(Base):
+    __tablename__ = "daily_plans"
+    __table_args__ = (
+        CheckConstraint("revision > 0", name="positive_daily_plan_revision"),
+        UniqueConstraint("trip_id", "date", name="uq_daily_plan_trip_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    trip_id: Mapped[UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"))
+    destination_id: Mapped[UUID] = mapped_column(
+        ForeignKey("destinations.id", ondelete="RESTRICT")
+    )
+    date: Mapped[date] = mapped_column(Date)
+    title: Mapped[str] = mapped_column(String(200))
+    summary: Mapped[str] = mapped_column(Text)
+    background_image: Mapped[str] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class TimelineEntry(Base):
+    __tablename__ = "timeline_entries"
+    __table_args__ = (
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL)",
+            name="complete_timeline_entry_location",
+        ),
+        CheckConstraint("position >= 0", name="nonnegative_timeline_position"),
+        CheckConstraint("revision > 0", name="positive_timeline_revision"),
+        UniqueConstraint(
+            "daily_plan_id", "position", name="uq_timeline_daily_plan_position"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    daily_plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("daily_plans.id", ondelete="CASCADE")
+    )
+    destination_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("destinations.id", ondelete="RESTRICT"), nullable=True
+    )
+    local_time: Mapped[time] = mapped_column(Time)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    location_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class Stay(Base):
+    __tablename__ = "stays"
+    __table_args__ = (
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL)", name="complete_stay_location"
+        ),
+        CheckConstraint("revision > 0", name="positive_stay_revision"),
+        UniqueConstraint("daily_plan_id", name="uq_stay_daily_plan"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    daily_plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("daily_plans.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    address: Mapped[str] = mapped_column(Text)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_in: Mapped[time | None] = mapped_column(Time, nullable=True)
+    check_out: Mapped[time | None] = mapped_column(Time, nullable=True)
+    public_listing_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    booking_platform: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class Photo(Base):
+    __tablename__ = "photos"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="nonnegative_photo_position"),
+        CheckConstraint("revision > 0", name="positive_photo_revision"),
+        UniqueConstraint(
+            "daily_plan_id", "position", name="uq_photo_daily_plan_position"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    daily_plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("daily_plans.id", ondelete="CASCADE")
+    )
+    url: Mapped[str] = mapped_column(Text)
+    caption: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class LegacyImport(Base):
+    __tablename__ = "legacy_imports"
+
+    import_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    trip_id: Mapped[UUID] = mapped_column(
+        ForeignKey("trips.id", ondelete="CASCADE"), unique=True
+    )
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
+    )

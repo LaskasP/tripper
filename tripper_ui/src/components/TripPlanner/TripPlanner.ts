@@ -1,5 +1,6 @@
 import "./TripPlanner.css";
 import { loadParticipantTrip } from "../../lib/trips";
+import { renderGuide } from "../Guide";
 
 function formatDateLabel(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -22,6 +23,10 @@ export async function renderTripPlanner(
 
   try {
     const trip = await loadParticipantTrip(tripId);
+    if (trip.daily_plans.length > 0) {
+      await renderGuide(app, trip);
+      return;
+    }
     document.title = `Plan ${trip.short_name || trip.name} · Tripper`;
 
     const page = document.createElement("main");

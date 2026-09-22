@@ -6,7 +6,8 @@
  *   - Add a brand-new day or edit an existing one by date
  *   - Prompts for every field: title, summary, background, stay, timeline, photos
  *   - Auto-geocodes addresses via the free Nominatim API (OpenStreetMap)
- *   - Writes directly to public/data/days.json (auto-sorts by date, renumbers)
+ *   - Writes directly to ../legacy_data/los_angeles/days.json
+ *     (auto-sorts by date, renumbers)
  */
 
 import * as readline from 'node:readline';
@@ -22,18 +23,18 @@ type BookingPlatform = 'booking.com' | 'airbnb';
 
 interface Stay {
   name: string; address: string; location: Location;
-  checkIn?: string; checkOut?: string;
-  bookingUrl?: string; platform?: BookingPlatform;
+  check_in?: string; check_out?: string;
+  public_listing_url?: string; booking_platform?: BookingPlatform;
 }
 interface TimelineEntry {
   time: string; title: string; description: string;
-  location?: Location; locationName?: string;
+  location?: Location; location_name?: string;
 }
 interface PhotoItem { url: string; caption: string }
 
 interface Day {
-  date: string; dayNumber: number; title: string; summary: string;
-  backgroundImage: string; stay: Stay;
+  date: string; day_number: number; title: string; summary: string;
+  background_image: string; stay: Stay;
   timeline: TimelineEntry[]; photos: PhotoItem[];
 }
 
@@ -41,7 +42,14 @@ interface Day {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-const DAYS_PATH = resolve(import.meta.dirname ?? '.', '..', 'public', 'data', 'days.json');
+const DAYS_PATH = resolve(
+  import.meta.dirname ?? '.',
+  '..',
+  '..',
+  'legacy_data',
+  'los_angeles',
+  'days.json',
+);
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q: string): Promise<string> =>
@@ -68,7 +76,7 @@ function loadDays(): Day[] {
 
 function saveDays(days: Day[]): void {
   days.sort((a, b) => a.date.localeCompare(b.date));
-  days.forEach((d, i) => (d.dayNumber = i + 1));
+  days.forEach((d, i) => (d.day_number = i + 1));
   writeFileSync(DAYS_PATH, JSON.stringify(days, null, 2) + '\n');
 }
 
@@ -86,22 +94,22 @@ async function askStay(existing?: Stay): Promise<Stay> {
   if (coords.lat !== 0) console.log(`  ✅ ${coords.lat}, ${coords.lng}`);
   else console.log('  ⚠️  Could not geocode — add lat/lng manually');
 
-  const checkIn  = (await ask(`  Check-in time [${existing?.checkIn ?? ''}]: `))  || existing?.checkIn;
-  const checkOut = (await ask(`  Check-out time [${existing?.checkOut ?? ''}]: `)) || existing?.checkOut;
+  const check_in  = (await ask(`  Check-in time [${existing?.check_in ?? ''}]: `))  || existing?.check_in;
+  const check_out = (await ask(`  Check-out time [${existing?.check_out ?? ''}]: `)) || existing?.check_out;
 
-  const platInput = (await ask(`  Platform (booking.com / airbnb) [${existing?.platform ?? ''}]: `)) || existing?.platform || '';
-  const platform: BookingPlatform | undefined =
+  const platInput = (await ask(`  Platform (booking.com / airbnb) [${existing?.booking_platform ?? ''}]: `)) || existing?.booking_platform || '';
+  const booking_platform: BookingPlatform | undefined =
     platInput.toLowerCase().includes('airbnb') ? 'airbnb'
     : platInput ? 'booking.com'
     : undefined;
 
-  const bookingUrl = (await ask(`  Booking URL [${existing?.bookingUrl ?? ''}]: `)) || existing?.bookingUrl;
+  const public_listing_url = (await ask(`  Booking URL [${existing?.public_listing_url ?? ''}]: `)) || existing?.public_listing_url;
 
   const stay: Stay = { name, address, location: coords };
-  if (checkIn)    stay.checkIn    = checkIn;
-  if (checkOut)   stay.checkOut   = checkOut;
-  if (bookingUrl) stay.bookingUrl = bookingUrl;
-  if (platform)   stay.platform   = platform;
+  if (check_in)    stay.check_in    = check_in;
+  if (check_out)   stay.check_out   = check_out;
+  if (public_listing_url) stay.public_listing_url = public_listing_url;
+  if (booking_platform)   stay.booking_platform   = booking_platform;
   return stay;
 }
 
@@ -110,7 +118,7 @@ async function askSingleTimelineEntry(index: number, existing?: TimelineEntry): 
   const time  = (await ask(`    Time (HH:MM)${existing ? ` [${existing.time}]` : ''}: `)) || existing?.time || '';
   const title = (await ask(`    Title${existing ? ` [${existing.title}]` : ''}: `))       || existing?.title || '';
   const desc  = (await ask(`    Description${existing ? ` [${existing.description}]` : ''}: `)) || existing?.description || '';
-  const locName = (await ask(`    Location name (optional)${existing?.locationName ? ` [${existing.locationName}]` : ''}: `)) || existing?.locationName;
+  const locName = (await ask(`    Location name (optional)${existing?.location_name ? ` [${existing.location_name}]` : ''}: `)) || existing?.location_name;
 
   let location: Location | undefined;
   if (locName) {
@@ -121,7 +129,7 @@ async function askSingleTimelineEntry(index: number, existing?: TimelineEntry): 
 
   const entry: TimelineEntry = { time, title, description: desc };
   if (location) entry.location = location;
-  if (locName)  entry.locationName = locName;
+  if (locName)  entry.location_name = locName;
   return entry;
 }
 
@@ -193,14 +201,14 @@ async function main() {
   const existing: Day | undefined = existingIdx >= 0 ? days[existingIdx] : undefined;
 
   if (existing) {
-    console.log(`\n📝 Editing Day ${existing.dayNumber}: "${existing.title}" (${existing.date})`);
+    console.log(`\n📝 Editing Day ${existing.day_number}: "${existing.title}" (${existing.date})`);
   } else {
     console.log(`\n🆕 Adding new day: ${dateInput}`);
   }
 
   const title   = (await ask(`Title${existing ? ` [${existing.title}]` : ''}: `))   || existing?.title || '';
   const summary = (await ask(`Summary${existing ? ` [${existing.summary}]` : ''}: `)) || existing?.summary || '';
-  const bgImage = (await ask(`Background image URL${existing ? ` [${existing.backgroundImage}]` : ''}: `)) || existing?.backgroundImage || '';
+  const bgImage = (await ask(`Background image URL${existing ? ` [${existing.background_image}]` : ''}: `)) || existing?.background_image || '';
 
   const stay     = await askStay(existing?.stay);
   const timeline = await askTimeline(existing?.timeline);
@@ -208,10 +216,10 @@ async function main() {
 
   const day: Day = {
     date: dateInput,
-    dayNumber: 0, // will be set by saveDays
+    day_number: 0, // will be set by saveDays
     title,
     summary,
-    backgroundImage: bgImage,
+    background_image: bgImage,
     stay,
     timeline,
     photos,

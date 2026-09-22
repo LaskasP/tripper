@@ -3,23 +3,12 @@ export interface Location {
   lng: number;
 }
 
-export interface TripConfig {
-  name: string;
-  destination: string;
-  short_name: string;
-  description: string;
-  timezone: string;
-  location: Location;
-  start_date: string;
-  end_date: string;
-}
-
 export interface TimelineEntry {
   time: string;
   title: string;
   description: string;
   location?: Location;
-  locationName?: string;
+  location_name?: string;
 }
 
 export type BookingPlatform = "booking.com" | "airbnb";
@@ -27,11 +16,11 @@ export type BookingPlatform = "booking.com" | "airbnb";
 export interface Stay {
   name: string;
   address: string;
-  location: Location;
-  checkIn?: string;
-  checkOut?: string;
-  bookingUrl?: string;
-  platform?: BookingPlatform;
+  location?: Location;
+  check_in?: string;
+  check_out?: string;
+  public_listing_url?: string;
+  booking_platform?: BookingPlatform;
 }
 
 export interface PhotoItem {
@@ -48,12 +37,12 @@ export interface Weather {
 
 export interface Day {
   date: string;
-  dayNumber: number;
+  day_number: number;
   title: string;
   summary: string;
-  backgroundImage: string;
+  background_image: string;
   weather?: Weather;
-  stay: Stay;
+  stay?: Stay;
   timeline: TimelineEntry[];
   photos: PhotoItem[];
 }

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -74,6 +74,40 @@ class TripRosterMemberResponse(BaseModel):
     role: TripRole
 
 
+class TimelineEntryResponse(BaseModel):
+    time: time
+    title: str
+    description: str
+    location: LocationInput | None
+    location_name: str | None
+
+
+class StayResponse(BaseModel):
+    name: str
+    address: str
+    location: LocationInput | None
+    check_in: time | None
+    check_out: time | None
+    public_listing_url: str | None
+    booking_platform: str | None
+
+
+class PhotoResponse(BaseModel):
+    url: str
+    caption: str
+
+
+class DailyPlanResponse(BaseModel):
+    date: date
+    day_number: int
+    title: str
+    summary: str
+    background_image: str
+    stay: StayResponse | None
+    timeline: list[TimelineEntryResponse]
+    photos: list[PhotoResponse]
+
+
 class TripDetailResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -87,4 +121,5 @@ class TripDetailResponse(BaseModel):
     start_date: date
     end_date: date
     calendar: list[TripCalendarDateResponse]
+    daily_plans: list[DailyPlanResponse]
     roster: list[TripRosterMemberResponse]

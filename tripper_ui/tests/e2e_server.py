@@ -53,6 +53,12 @@ def trip_planner_page(trip_id: str) -> FileResponse:
     return FileResponse(DIST_DIR / "index.html")
 
 
+@app.get("/tripper/trips/{trip_id}", include_in_schema=False)
+def participant_guide_page(trip_id: str) -> FileResponse:
+    del trip_id
+    return FileResponse(DIST_DIR / "index.html")
+
+
 app.mount("/tripper", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
 
 

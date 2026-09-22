@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from uuid import UUID
 
 from sqlalchemy import case, select
@@ -7,7 +7,55 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.auth.auth_model import Account
 from tripper_api.trip.trip_dto import TripSummaryResponse
-from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
+from tripper_api.trip.trip_model import (
+    DailyPlan,
+    Destination,
+    Photo,
+    Stay,
+    TimelineEntry,
+    Trip,
+    TripMembership,
+    TripRole,
+)
+
+
+@dataclass(frozen=True)
+class _StoredTimelineEntry:
+    local_time: time
+    title: str
+    description: str
+    location_name: str | None
+    latitude: float | None
+    longitude: float | None
+
+
+@dataclass(frozen=True)
+class _StoredStay:
+    name: str
+    address: str
+    latitude: float | None
+    longitude: float | None
+    check_in: time | None
+    check_out: time | None
+    public_listing_url: str | None
+    booking_platform: str | None
+
+
+@dataclass(frozen=True)
+class _StoredPhoto:
+    url: str
+    caption: str
+
+
+@dataclass(frozen=True)
+class _StoredDailyPlan:
+    date: date
+    title: str
+    summary: str
+    background_image: str
+    stay: _StoredStay | None
+    timeline: tuple[_StoredTimelineEntry, ...]
+    photos: tuple[_StoredPhoto, ...]
 
 
 @dataclass(frozen=True)
@@ -22,6 +70,7 @@ class _StoredParticipantGuide:
     longitude: float | None
     start_date: date
     end_date: date
+    daily_plans: tuple[_StoredDailyPlan, ...]
     roster: tuple[tuple[str, TripRole], ...]
 
 
@@ -117,6 +166,85 @@ class TripRepository:
             )
         )
         roster_rows = (await self._session.execute(roster_statement)).tuples().all()
+        plan_rows = (
+            (
+                await self._session.execute(
+                    select(
+                        DailyPlan.id,
+                        DailyPlan.date,
+                        DailyPlan.title,
+                        DailyPlan.summary,
+                        DailyPlan.background_image,
+                    )
+                    .where(DailyPlan.trip_id == trip_id)
+                    .order_by(DailyPlan.date, DailyPlan.id)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        daily_plans: list[_StoredDailyPlan] = []
+        for plan_id, plan_date, title, summary, background_image in plan_rows:
+            timeline_rows = (
+                (
+                    await self._session.execute(
+                        select(
+                            TimelineEntry.local_time,
+                            TimelineEntry.title,
+                            TimelineEntry.description,
+                            TimelineEntry.location_name,
+                            TimelineEntry.latitude,
+                            TimelineEntry.longitude,
+                        )
+                        .where(TimelineEntry.daily_plan_id == plan_id)
+                        .order_by(TimelineEntry.position, TimelineEntry.id)
+                    )
+                )
+                .tuples()
+                .all()
+            )
+            stay_row = (
+                (
+                    await self._session.execute(
+                        select(
+                            Stay.name,
+                            Stay.address,
+                            Stay.latitude,
+                            Stay.longitude,
+                            Stay.check_in,
+                            Stay.check_out,
+                            Stay.public_listing_url,
+                            Stay.booking_platform,
+                        ).where(Stay.daily_plan_id == plan_id)
+                    )
+                )
+                .tuples()
+                .one_or_none()
+            )
+            photo_rows = (
+                (
+                    await self._session.execute(
+                        select(Photo.url, Photo.caption)
+                        .where(Photo.daily_plan_id == plan_id)
+                        .order_by(Photo.position, Photo.id)
+                    )
+                )
+                .tuples()
+                .all()
+            )
+            daily_plans.append(
+                _StoredDailyPlan(
+                    date=plan_date,
+                    title=title,
+                    summary=summary,
+                    background_image=background_image,
+                    stay=_StoredStay(*stay_row) if stay_row is not None else None,
+                    timeline=tuple(
+                        _StoredTimelineEntry(*entry) for entry in timeline_rows
+                    ),
+                    photos=tuple(_StoredPhoto(*photo) for photo in photo_rows),
+                )
+            )
         return _StoredParticipantGuide(
             id=row[0],
             name=row[1],
@@ -128,5 +256,6 @@ class TripRepository:
             longitude=row[7],
             start_date=row[8],
             end_date=row[9],
+            daily_plans=tuple(daily_plans),
             roster=tuple((display_name, role) for display_name, role in roster_rows),
         )

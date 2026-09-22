@@ -36,6 +36,30 @@ export interface TripDetail {
     day_number: number;
     is_planned: boolean;
   }>;
+  daily_plans: Array<{
+    date: string;
+    day_number: number;
+    title: string;
+    summary: string;
+    background_image: string;
+    stay: {
+      name: string;
+      address: string;
+      location: { lat: number; lng: number } | null;
+      check_in: string | null;
+      check_out: string | null;
+      public_listing_url: string | null;
+      booking_platform: "booking.com" | "airbnb" | null;
+    } | null;
+    timeline: Array<{
+      time: string;
+      title: string;
+      description: string;
+      location: { lat: number; lng: number } | null;
+      location_name: string | null;
+    }>;
+    photos: Array<{ url: string; caption: string }>;
+  }>;
   roster: Array<{
     display_name: string;
     role: TripRole;

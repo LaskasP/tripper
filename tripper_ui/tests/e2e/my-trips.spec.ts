@@ -76,3 +76,59 @@ test('user creates a trip and finds it in My Trips as creator', async ({ page })
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByText('Sign in with Google to see your trips.')).toBeVisible();
 });
+
+test('participant guide renders canonical API content without loading legacy JSON', async ({ page }) => {
+  const requestedPaths: string[] = [];
+  page.on('request', (request) => requestedPaths.push(new URL(request.url()).pathname));
+  await page.route('**/api/trips/imported', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '223eb014-ff17-51e7-9507-b956164ff7a4',
+        name: 'Los Angeles 2026',
+        destination: 'Los Angeles',
+        short_name: 'LA Trip 2026',
+        description: 'Los Angeles Trip Itinerary',
+        timezone: 'America/Los_Angeles',
+        location: null,
+        start_date: '2026-11-13',
+        end_date: '2026-11-13',
+        calendar: [{ date: '2026-11-13', day_number: 1, is_planned: true }],
+        daily_plans: [{
+          date: '2026-11-13',
+          day_number: 1,
+          title: 'Arrival at Downtown LA',
+          summary: 'Land at LAX and settle into Downtown LA.',
+          background_image: 'https://example.com/background.jpg',
+          stay: {
+            name: 'Fashion Loft',
+            address: '814 South Spring Street',
+            location: null,
+            check_in: '16:30:00',
+            check_out: null,
+            public_listing_url: 'https://example.com/stay',
+            booking_platform: 'booking.com',
+          },
+          timeline: [{
+            time: '15:00:00',
+            title: 'Arrive at LAX',
+            description: 'Pick up the rental car.',
+            location: null,
+            location_name: null,
+          }],
+          photos: [{ url: 'https://example.com/photo.jpg', caption: 'Downtown LA skyline' }],
+        }],
+        roster: [{ display_name: 'E2E Traveller', role: 'creator' }],
+      }),
+    });
+  });
+
+  await page.goto('/tripper/trips/imported');
+
+  await expect(page.getByRole('heading', { name: 'Arrival at Downtown LA' })).toBeVisible();
+  await expect(page.getByText('Arrive at LAX')).toBeVisible();
+  await expect(page.getByText('Fashion Loft')).toBeVisible();
+  await expect(page.getByAltText('Downtown LA skyline')).toBeVisible();
+  expect(requestedPaths).not.toContain('/tripper/data/trip.json');
+  expect(requestedPaths).not.toContain('/tripper/data/days.json');
+});

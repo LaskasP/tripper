@@ -8,7 +8,7 @@ export function createTimelineItem(entry: TimelineEntry): HTMLElement {
 
   const pill = document.createElement('span');
   pill.className = 'timeline-item__time';
-  pill.textContent = entry.time;
+  pill.textContent = entry.time.slice(0, 5);
 
   const body = document.createElement('div');
   body.className = 'timeline-item__body';
@@ -27,7 +27,7 @@ export function createTimelineItem(entry: TimelineEntry): HTMLElement {
   if (entry.location) {
     const mapBtn = createMapButton(
       entry.location,
-      entry.locationName ?? 'View on Map',
+      entry.location_name ?? 'View on Map',
     );
     body.appendChild(mapBtn);
   }
