@@ -6,7 +6,8 @@ import { createDay } from "./components/Day";
 import { createAppHeader, updateAppHeader } from "./components/AppHeader";
 import { createDotNav, updateDotNav } from "./components/DotNav";
 import type { Day, TripConfig } from "./types";
-import { renderMyTrips, renderTripPlanner } from "./components/MyTrips";
+import { renderMyTrips } from "./components/MyTrips";
+import { renderTripPlanner } from "./components/TripPlanner";
 
 async function main(): Promise<void> {
   const app = document.getElementById("app");

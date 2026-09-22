@@ -47,6 +47,19 @@ test('user creates a trip and finds it in My Trips as creator', async ({ page })
   await expect(trip).toContainText('Cyclades');
   await expect(trip).toContainText('Creator');
 
+  await page.getByRole('button', { name: 'Create trip' }).click();
+  await page.getByLabel('Trip name').fill('Japan 2028');
+  await page.getByLabel('Destination').fill('Tokyo');
+  await page.getByLabel('Timezone').fill('Asia/Tokyo');
+  await page.getByLabel('Start date').fill('2028-04-01');
+  await page.getByLabel('End date').fill('2028-04-03');
+  await page.getByRole('button', { name: 'Save trip' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Plan' })).toBeVisible();
+  await page.goto('/tripper/my-trips');
+  await expect(page.getByRole('link', { name: /Greek Islands 2027/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Japan 2028/ })).toContainText('Creator');
+
   await page.reload();
   await expect(page.getByRole('link', { name: /Greek Islands 2027/ })).toContainText('Creator');
 

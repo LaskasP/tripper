@@ -21,8 +21,16 @@ export interface NewTrip {
   end_date: string;
 }
 
-export interface TripDetail extends NewTrip {
+export interface TripDetail {
   id: string;
+  name: string;
+  destination: string;
+  short_name: string;
+  description: string;
+  timezone: string;
+  location: { lat: number; lng: number } | null;
+  start_date: string;
+  end_date: string;
 }
 
 export class ApiError extends Error {

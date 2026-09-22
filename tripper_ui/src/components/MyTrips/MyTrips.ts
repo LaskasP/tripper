@@ -3,13 +3,12 @@ import {
   createTrip,
   ApiError,
   loadMyTrips,
-  loadParticipantTrip,
   type NewTrip,
   type TripSummary,
 } from "../../lib/trips";
 import { renderGoogleSignIn, signOut } from "../../lib/auth";
 
-function field(
+function createInputField(
   labelText: string,
   name: string,
   type = "text",
@@ -80,8 +79,8 @@ function newTripDialog(
   const coordinates = document.createElement("div");
   coordinates.className = "trip-form__coordinates";
   coordinates.append(
-    field("Latitude", "latitude", "number", false),
-    field("Longitude", "longitude", "number", false),
+    createInputField("Latitude", "latitude", "number", false),
+    createInputField("Longitude", "longitude", "number", false),
   );
   coordinates.querySelectorAll("input").forEach((input) => {
     input.step = "any";
@@ -90,8 +89,8 @@ function newTripDialog(
   const dates = document.createElement("div");
   dates.className = "trip-form__dates";
   dates.append(
-    field("Start date", "start_date", "date"),
-    field("End date", "end_date", "date"),
+    createInputField("Start date", "start_date", "date"),
+    createInputField("End date", "end_date", "date"),
   );
 
   const error = document.createElement("p");
@@ -111,11 +110,11 @@ function newTripDialog(
 
   form.append(
     title,
-    field("Trip name", "name"),
-    field("Short name", "short_name", "text", false),
-    field("Destination", "destination"),
+    createInputField("Trip name", "name"),
+    createInputField("Short name", "short_name", "text", false),
+    createInputField("Destination", "destination"),
     description,
-    field("Timezone", "timezone"),
+    createInputField("Timezone", "timezone"),
     coordinates,
     dates,
     error,
@@ -246,94 +245,5 @@ export async function renderMyTrips(app: HTMLElement): Promise<void> {
       caught instanceof Error
         ? caught.message
         : "Something went wrong. Please try again.";
-  }
-}
-
-function inclusiveDates(startDate: string, endDate: string): Date[] {
-  const dates: Date[] = [];
-  const current = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  while (current <= end) {
-    dates.push(new Date(current));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}
-
-function accessibleDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-export async function renderTripPlanner(
-  app: HTMLElement,
-  tripId: string,
-): Promise<void> {
-  document.documentElement.style.scrollSnapType = "none";
-  const loading = document.createElement("p");
-  loading.className = "loading";
-  loading.textContent = "Loading trip…";
-  app.replaceChildren(loading);
-
-  try {
-    const trip = await loadParticipantTrip(tripId);
-    document.title = `Plan ${trip.short_name || trip.name} · Tripper`;
-
-    const page = document.createElement("main");
-    page.className = "trip-planner";
-
-    const back = document.createElement("a");
-    back.className = "trip-planner__back";
-    back.href = "/tripper/my-trips";
-    back.textContent = "Back to My Trips";
-
-    const eyebrow = document.createElement("p");
-    eyebrow.className = "trip-planner__eyebrow";
-    eyebrow.textContent = `${trip.name} · ${trip.destination}`;
-
-    const title = document.createElement("h1");
-    title.textContent = "Plan";
-
-    const dayNavigation = document.createElement("nav");
-    dayNavigation.className = "trip-planner__days";
-    dayNavigation.setAttribute("aria-label", "Trip dates");
-
-    const selectedDate = document.createElement("h2");
-    const message = document.createElement("p");
-    message.className = "trip-planner__unplanned";
-    message.textContent = "Not planned yet";
-
-    const showDate = (button: HTMLButtonElement, date: Date): void => {
-      dayNavigation
-        .querySelectorAll("button")
-        .forEach((dateButton) => dateButton.removeAttribute("aria-current"));
-      button.setAttribute("aria-current", "date");
-      selectedDate.textContent = accessibleDate(date);
-    };
-
-    inclusiveDates(trip.start_date, trip.end_date).forEach((date, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = String(date.getUTCDate());
-      button.setAttribute("aria-label", accessibleDate(date));
-      button.addEventListener("click", () => showDate(button, date));
-      dayNavigation.appendChild(button);
-      if (index === 0) showDate(button, date);
-    });
-
-    const emptyDay = document.createElement("section");
-    emptyDay.className = "trip-planner__empty-day";
-    emptyDay.append(selectedDate, message);
-
-    page.append(back, eyebrow, title, dayNavigation, emptyDay);
-    app.replaceChildren(page);
-  } catch (caught) {
-    loading.className = "error";
-    loading.textContent =
-      caught instanceof Error ? caught.message : "Could not load this trip.";
   }
 }

@@ -1,0 +1,66 @@
+.trip-planner {
+  width: min(68rem, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: clamp(1.25rem, 5vw, 4rem);
+}
+
+.trip-planner__back {
+  color: var(--color-muted);
+}
+
+.trip-planner__eyebrow {
+  margin-top: 3rem;
+  color: var(--color-muted);
+  letter-spacing: 0.05em;
+}
+
+.trip-planner h1 {
+  margin-top: 0.25rem;
+  font-size: clamp(3rem, 10vw, 6rem);
+  line-height: 0.95;
+}
+
+.trip-planner__days {
+  display: flex;
+  gap: 0.65rem;
+  margin: 2.5rem 0 1.25rem;
+  padding-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.trip-planner__days button {
+  flex: 0 0 3rem;
+  min-height: 3rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.trip-planner__days button[aria-current='date'] {
+  background: #fff;
+  color: #111;
+  font-weight: 800;
+}
+
+.trip-planner__empty-day {
+  min-height: 18rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.12), transparent 40%),
+    var(--glass-bg);
+}
+
+.trip-planner__empty-day h2 {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.trip-planner__unplanned {
+  margin-top: 1rem;
+  color: var(--color-muted);
+}

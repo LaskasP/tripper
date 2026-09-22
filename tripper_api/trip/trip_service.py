@@ -4,11 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
     TripCreateRequest,
-    TripDetailResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
-from tripper_api.trip.trip_repository import TripRepository
+from tripper_api.trip.trip_repository import TripDetailRecord, TripRepository
 
 
 class TripNotFoundError(Exception):
@@ -67,7 +66,7 @@ class TripService:
 
     async def get_for_account(
         self, trip_id: UUID, account_id: UUID
-    ) -> TripDetailResponse:
+    ) -> TripDetailRecord:
         async with self._session.begin():
             trip = await self._repository.get_for_account(trip_id, account_id)
         if trip is None:

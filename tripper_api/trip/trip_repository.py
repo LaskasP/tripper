@@ -1,14 +1,26 @@
+from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.trip.trip_dto import (
-    LocationInput,
-    TripDetailResponse,
-    TripSummaryResponse,
-)
+from tripper_api.trip.trip_dto import TripSummaryResponse
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership
+
+
+@dataclass(frozen=True)
+class TripDetailRecord:
+    id: UUID
+    name: str
+    destination: str
+    short_name: str
+    description: str
+    timezone: str
+    latitude: float | None
+    longitude: float | None
+    start_date: date
+    end_date: date
 
 
 class TripRepository:
@@ -61,7 +73,7 @@ class TripRepository:
 
     async def get_for_account(
         self, trip_id: UUID, account_id: UUID
-    ) -> TripDetailResponse | None:
+    ) -> TripDetailRecord | None:
         statement = (
             select(
                 Trip.id,
@@ -88,18 +100,15 @@ class TripRepository:
         row = (await self._session.execute(statement)).tuples().one_or_none()
         if row is None:
             return None
-        return TripDetailResponse(
+        return TripDetailRecord(
             id=row[0],
             name=row[1],
             destination=row[2],
             short_name=row[3],
             description=row[4],
             timezone=row[5],
-            location=(
-                LocationInput(lat=row[6], lng=row[7])
-                if row[6] is not None and row[7] is not None
-                else None
-            ),
+            latitude=row[6],
+            longitude=row[7],
             start_date=row[8],
             end_date=row[9],
         )
