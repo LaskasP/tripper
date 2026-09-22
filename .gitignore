@@ -22,6 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+docs/
 
 # Python and local application state
 __pycache__/

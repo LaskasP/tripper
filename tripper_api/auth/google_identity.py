@@ -5,9 +5,7 @@ import jwt
 from jwt import PyJWKSet
 
 from tripper_api.auth.auth_identity import GoogleIdentity
-
-GOOGLE_CERTIFICATES_URL = "https://www.googleapis.com/oauth2/v3/certs"
-TRUSTED_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+from tripper_api.core.constants import GOOGLE_CERTIFICATES_URL, TRUSTED_ISSUERS
 
 
 class InvalidGoogleCredentialError(Exception):
