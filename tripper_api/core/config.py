@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str
-    google_client_id: str
+    google_client_id: str = "google_client_id_not_set"
     database_echo: bool = False
 
     @field_validator("database_url")
