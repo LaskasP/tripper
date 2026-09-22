@@ -39,8 +39,9 @@ Run the complete application with Docker Compose:
 docker compose up --build
 ```
 
-Open the UI at `http://localhost:8080/tripper/` and the API docs at
-`http://localhost:8080/docs`.
+Open the UI at `http://localhost:8080/tripper/`. The API is available directly
+at `http://localhost:8000`, with Swagger docs at `http://localhost:8000/docs`.
+The same docs are also proxied through the UI at `http://localhost:8080/docs`.
 
 Stop the stack with `docker compose down`. Add `-v` to also remove the local
 PostgreSQL volume.
