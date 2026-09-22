@@ -13,15 +13,15 @@ export interface TripSummary {
 export interface NewTrip {
   name: string;
   destination: string;
-  short_name: string;
-  description: string;
+  short_name?: string;
+  description?: string;
   timezone: string;
-  location: { lat: number; lng: number };
+  location?: { lat: number; lng: number };
   start_date: string;
   end_date: string;
 }
 
-export interface PublicTrip extends NewTrip {
+export interface TripDetail extends NewTrip {
   id: string;
 }
 
@@ -79,7 +79,7 @@ export function createTrip(trip: NewTrip): Promise<TripSummary> {
   });
 }
 
-export function loadPublicTrip(tripId: string): Promise<PublicTrip> {
-  return apiRequest<PublicTrip>(`/api/trips/${encodeURIComponent(tripId)}`);
+export function loadParticipantTrip(tripId: string): Promise<TripDetail> {
+  return apiRequest<TripDetail>(`/api/trips/${encodeURIComponent(tripId)}`);
 }
 import { sessionCsrfToken } from "./auth";

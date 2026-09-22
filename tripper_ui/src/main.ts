@@ -6,7 +6,7 @@ import { createDay } from "./components/Day";
 import { createAppHeader, updateAppHeader } from "./components/AppHeader";
 import { createDotNav, updateDotNav } from "./components/DotNav";
 import type { Day, TripConfig } from "./types";
-import { renderMyTrips, renderSelectedTrip } from "./components/MyTrips";
+import { renderMyTrips, renderTripPlanner } from "./components/MyTrips";
 
 async function main(): Promise<void> {
   const app = document.getElementById("app");
@@ -17,11 +17,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const selectedTripId = new URLSearchParams(window.location.search).get(
-    "trip",
+  const plannerRoute = window.location.pathname.match(
+    /\/trips\/([^/]+)\/edit\/?$/,
   );
-  if (selectedTripId) {
-    await renderSelectedTrip(app, selectedTripId);
+  if (plannerRoute) {
+    await renderTripPlanner(app, decodeURIComponent(plannerRoute[1]));
     return;
   }
 

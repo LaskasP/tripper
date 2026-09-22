@@ -1,1 +1,1 @@
-export { renderMyTrips, renderSelectedTrip } from './MyTrips';
+export { renderMyTrips, renderTripPlanner } from './MyTrips';

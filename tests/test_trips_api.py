@@ -91,6 +91,35 @@ async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
     ]
 
 
+async def test_signed_in_user_can_create_multiple_independent_trips(
+    database_settings: Settings,
+) -> None:
+    second_trip = {
+        **TRIP,
+        "name": "Japan 2028",
+        "destination": "Tokyo",
+        "short_name": "Japan",
+        "start_date": "2028-04-01",
+        "end_date": "2028-04-03",
+    }
+
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        first = await client.post("/api/trips", json=TRIP)
+        second = await client.post("/api/trips", json=second_trip)
+        listed = await client.get("/api/me/trips")
+
+    assert [first.status_code, second.status_code, listed.status_code] == [
+        201,
+        201,
+        200,
+    ]
+    assert {(trip["name"], trip["role"]) for trip in listed.json()} == {
+        ("Greek Islands 2027", "creator"),
+        ("Japan 2028", "creator"),
+    }
+    assert first.json()["id"] != second.json()["id"]
+
+
 async def test_trip_creation_rejects_client_supplied_creator_and_role(
     database_settings: Settings,
 ) -> None:
@@ -108,6 +137,45 @@ async def test_trip_creation_rejects_client_supplied_creator_and_role(
         }
     }
     assert listed.json() == []
+
+
+async def test_trip_creation_allows_optional_details_to_be_omitted(
+    database_settings: Settings,
+) -> None:
+    minimal_trip = {
+        "name": "Athens weekend",
+        "destination": "Athens",
+        "timezone": "Europe/Athens",
+        "start_date": "2027-09-03",
+        "end_date": "2027-09-05",
+    }
+
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        response = await client.post("/api/trips", json=minimal_trip)
+        detail = await client.get(f"/api/trips/{response.json()['id']}")
+
+    assert response.status_code == 201
+    assert detail.status_code == 200
+    assert detail.json()["short_name"] == ""
+    assert detail.json()["description"] == ""
+    assert detail.json()["location"] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("name", "   "), ("destination", "\t"), ("timezone", "Mars/Olympus")],
+)
+async def test_trip_creation_rejects_invalid_required_metadata(
+    database_settings: Settings,
+    field: str,
+    value: str,
+) -> None:
+    invalid_trip = {**TRIP, field: value}
+
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        response = await client.post("/api/trips", json=invalid_trip)
+
+    assert response.status_code == 422
 
 
 async def test_trip_management_requires_authentication(
@@ -155,16 +223,33 @@ async def test_created_trip_survives_a_new_application_instance(
     ]
 
 
-async def test_public_trip_does_not_require_authentication(
+async def test_created_draft_is_available_only_to_its_participants(
     database_settings: Settings,
 ) -> None:
     async for client, app in app_client(database_settings, {"id": ALEX_ID}):
         created = await client.post("/api/trips", json=TRIP)
+        participant_trip = await client.get(f"/api/trips/{created.json()['id']}")
         app.dependency_overrides.pop(require_current_user)
-        public_trip = await client.get(f"/api/trips/{created.json()['id']}")
+        anonymous_trip = await client.get(f"/api/trips/{created.json()['id']}")
 
-    assert public_trip.status_code == 200
-    assert public_trip.json()["name"] == "Greek Islands 2027"
+    assert participant_trip.status_code == 200
+    assert participant_trip.json()["name"] == "Greek Islands 2027"
+    assert anonymous_trip.status_code == 401
+
+
+async def test_created_draft_is_hidden_from_a_different_signed_in_user(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        created = await client.post("/api/trips", json=TRIP)
+        user["id"] = JAMIE_ID
+        hidden_trip = await client.get(f"/api/trips/{created.json()['id']}")
+
+    assert hidden_trip.status_code == 404
+    assert hidden_trip.json() == {
+        "error": {"code": "trip_not_found", "message": "Trip not found"}
+    }
 
 
 async def test_unexpected_errors_are_logged_without_exposing_details(

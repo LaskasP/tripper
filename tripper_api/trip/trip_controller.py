@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, status
 from tripper_api.core.security import AuthenticatedUser, require_current_user
 from tripper_api.trip.trip_dependencies import get_trip_service
 from tripper_api.trip.trip_dto import (
-    PublicTripResponse,
     TripCreateRequest,
+    TripDetailResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_service import TripService
@@ -41,9 +41,10 @@ async def list_my_trips(
     return [TripSummaryResponse.model_validate(trip) for trip in trips]
 
 
-@router.get("/trips/{trip_id}", response_model=PublicTripResponse)
-async def get_public_trip(
+@router.get("/trips/{trip_id}", response_model=TripDetailResponse)
+async def get_participant_trip(
     trip_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
     service: Annotated[TripService, Depends(get_trip_service)],
-) -> PublicTripResponse:
-    return await service.get_public(trip_id)
+) -> TripDetailResponse:
+    return await service.get_for_account(trip_id, user.id)

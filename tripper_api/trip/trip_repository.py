@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
     LocationInput,
-    PublicTripResponse,
+    TripDetailResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership
@@ -59,7 +59,9 @@ class TripRepository:
             for row in rows
         ]
 
-    async def get_public(self, trip_id: UUID) -> PublicTripResponse | None:
+    async def get_for_account(
+        self, trip_id: UUID, account_id: UUID
+    ) -> TripDetailResponse | None:
         statement = (
             select(
                 Trip.id,
@@ -77,19 +79,27 @@ class TripRepository:
                 Destination,
                 (Destination.trip_id == Trip.id) & (Destination.position == 0),
             )
-            .where(Trip.id == trip_id)
+            .join(TripMembership, TripMembership.trip_id == Trip.id)
+            .where(
+                Trip.id == trip_id,
+                TripMembership.account_id == account_id,
+            )
         )
         row = (await self._session.execute(statement)).tuples().one_or_none()
         if row is None:
             return None
-        return PublicTripResponse(
+        return TripDetailResponse(
             id=row[0],
             name=row[1],
             destination=row[2],
             short_name=row[3],
             description=row[4],
             timezone=row[5],
-            location=LocationInput(lat=row[6], lng=row[7]),
+            location=(
+                LocationInput(lat=row[6], lng=row[7])
+                if row[6] is not None and row[7] is not None
+                else None
+            ),
             start_date=row[8],
             end_date=row[9],
         )

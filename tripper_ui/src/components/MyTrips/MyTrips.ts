@@ -3,7 +3,7 @@ import {
   createTrip,
   ApiError,
   loadMyTrips,
-  loadPublicTrip,
+  loadParticipantTrip,
   type NewTrip,
   type TripSummary,
 } from "../../lib/trips";
@@ -13,6 +13,7 @@ function field(
   labelText: string,
   name: string,
   type = "text",
+  required = true,
 ): HTMLLabelElement {
   const label = document.createElement("label");
   label.textContent = labelText;
@@ -20,7 +21,7 @@ function field(
   const input = document.createElement("input");
   input.name = name;
   input.type = type;
-  input.required = true;
+  input.required = required;
   label.appendChild(input);
   return label;
 }
@@ -29,7 +30,7 @@ function tripCard(trip: TripSummary): HTMLLIElement {
   const item = document.createElement("li");
   const link = document.createElement("a");
   link.className = "my-trips__card";
-  link.href = `/tripper/?trip=${encodeURIComponent(trip.id)}`;
+  link.href = `/tripper/trips/${encodeURIComponent(trip.id)}/edit`;
   link.setAttribute(
     "aria-label",
     `${trip.name}, ${trip.destination}, ${trip.role}`,
@@ -73,14 +74,14 @@ function newTripDialog(
   description.textContent = "Description";
   const descriptionInput = document.createElement("textarea");
   descriptionInput.name = "description";
-  descriptionInput.required = true;
+  descriptionInput.required = false;
   description.appendChild(descriptionInput);
 
   const coordinates = document.createElement("div");
   coordinates.className = "trip-form__coordinates";
   coordinates.append(
-    field("Latitude", "latitude", "number"),
-    field("Longitude", "longitude", "number"),
+    field("Latitude", "latitude", "number", false),
+    field("Longitude", "longitude", "number", false),
   );
   coordinates.querySelectorAll("input").forEach((input) => {
     input.step = "any";
@@ -111,7 +112,7 @@ function newTripDialog(
   form.append(
     title,
     field("Trip name", "name"),
-    field("Short name", "short_name"),
+    field("Short name", "short_name", "text", false),
     field("Destination", "destination"),
     description,
     field("Timezone", "timezone"),
@@ -126,16 +127,22 @@ function newTripDialog(
     save.disabled = true;
     error.textContent = "";
     const data = new FormData(form);
+    const latitude = String(data.get("latitude")).trim();
+    const longitude = String(data.get("longitude")).trim();
+    if (Boolean(latitude) !== Boolean(longitude)) {
+      error.textContent = "Enter both latitude and longitude, or leave both blank.";
+      save.disabled = false;
+      return;
+    }
     const trip: NewTrip = {
       name: String(data.get("name")),
       short_name: String(data.get("short_name")),
       destination: String(data.get("destination")),
       description: String(data.get("description")),
       timezone: String(data.get("timezone")),
-      location: {
-        lat: Number(data.get("latitude")),
-        lng: Number(data.get("longitude")),
-      },
+      ...(latitude && longitude
+        ? { location: { lat: Number(latitude), lng: Number(longitude) } }
+        : {}),
       start_date: String(data.get("start_date")),
       end_date: String(data.get("end_date")),
     };
@@ -200,7 +207,9 @@ export async function renderMyTrips(app: HTMLElement): Promise<void> {
     list.appendChild(tripCard(trip));
   };
 
-  const dialog = newTripDialog(addTrip);
+  const dialog = newTripDialog((trip) => {
+    window.location.assign(`/tripper/trips/${encodeURIComponent(trip.id)}/edit`);
+  });
   createButton.addEventListener("click", () => dialog.showModal());
   page.append(header, status, list, dialog);
   app.replaceChildren(page);
@@ -240,7 +249,27 @@ export async function renderMyTrips(app: HTMLElement): Promise<void> {
   }
 }
 
-export async function renderSelectedTrip(
+function inclusiveDates(startDate: string, endDate: string): Date[] {
+  const dates: Date[] = [];
+  const current = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  while (current <= end) {
+    dates.push(new Date(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function accessibleDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+export async function renderTripPlanner(
   app: HTMLElement,
   tripId: string,
 ): Promise<void> {
@@ -251,20 +280,56 @@ export async function renderSelectedTrip(
   app.replaceChildren(loading);
 
   try {
-    const trip = await loadPublicTrip(tripId);
-    document.title = trip.short_name;
+    const trip = await loadParticipantTrip(tripId);
+    document.title = `Plan ${trip.short_name || trip.name} · Tripper`;
 
     const page = document.createElement("main");
-    page.className = "empty-trip";
-    const destination = document.createElement("p");
-    destination.className = "empty-trip__destination";
-    destination.textContent = trip.destination;
+    page.className = "trip-planner";
+
+    const back = document.createElement("a");
+    back.className = "trip-planner__back";
+    back.href = "/tripper/my-trips";
+    back.textContent = "Back to My Trips";
+
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "trip-planner__eyebrow";
+    eyebrow.textContent = `${trip.name} · ${trip.destination}`;
+
     const title = document.createElement("h1");
-    title.textContent = trip.name;
+    title.textContent = "Plan";
+
+    const dayNavigation = document.createElement("nav");
+    dayNavigation.className = "trip-planner__days";
+    dayNavigation.setAttribute("aria-label", "Trip dates");
+
+    const selectedDate = document.createElement("h2");
     const message = document.createElement("p");
-    message.className = "empty-trip__message";
-    message.textContent = "No days planned yet.";
-    page.append(destination, title, message);
+    message.className = "trip-planner__unplanned";
+    message.textContent = "Not planned yet";
+
+    const showDate = (button: HTMLButtonElement, date: Date): void => {
+      dayNavigation
+        .querySelectorAll("button")
+        .forEach((dateButton) => dateButton.removeAttribute("aria-current"));
+      button.setAttribute("aria-current", "date");
+      selectedDate.textContent = accessibleDate(date);
+    };
+
+    inclusiveDates(trip.start_date, trip.end_date).forEach((date, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = String(date.getUTCDate());
+      button.setAttribute("aria-label", accessibleDate(date));
+      button.addEventListener("click", () => showDate(button, date));
+      dayNavigation.appendChild(button);
+      if (index === 0) showDate(button, date);
+    });
+
+    const emptyDay = document.createElement("section");
+    emptyDay.className = "trip-planner__empty-day";
+    emptyDay.append(selectedDate, message);
+
+    page.append(back, eyebrow, title, dayNavigation, emptyDay);
     app.replaceChildren(page);
   } catch (caught) {
     loading.className = "error";

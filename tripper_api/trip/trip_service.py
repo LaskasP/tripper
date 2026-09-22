@@ -3,8 +3,8 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
-    PublicTripResponse,
     TripCreateRequest,
+    TripDetailResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
@@ -39,8 +39,8 @@ class TripService:
             trip_id=trip.id,
             name=request.destination,
             timezone=request.timezone,
-            latitude=request.location.lat,
-            longitude=request.location.lng,
+            latitude=request.location.lat if request.location is not None else None,
+            longitude=request.location.lng if request.location is not None else None,
             position=0,
         )
         membership = TripMembership(
@@ -65,9 +65,11 @@ class TripService:
         async with self._session.begin():
             return await self._repository.list_for_account(account_id)
 
-    async def get_public(self, trip_id: UUID) -> PublicTripResponse:
+    async def get_for_account(
+        self, trip_id: UUID, account_id: UUID
+    ) -> TripDetailResponse:
         async with self._session.begin():
-            trip = await self._repository.get_public(trip_id)
+            trip = await self._repository.get_for_account(trip_id, account_id)
         if trip is None:
             raise TripNotFoundError
         return trip
