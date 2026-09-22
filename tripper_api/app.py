@@ -9,7 +9,7 @@ from tripper_api.auth.auth_identity import GoogleIdentity
 from tripper_api.auth.google_identity import GoogleIdentityVerifier
 from tripper_api.core.config import Settings
 from tripper_api.core.database import Database
-from tripper_api.core.errors import register_error_handlers
+from tripper_api.core.error_handler import register_error_handlers
 from tripper_api.trip.trip_controller import router as trip_router
 
 

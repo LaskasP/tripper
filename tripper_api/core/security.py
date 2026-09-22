@@ -6,20 +6,16 @@ from uuid import UUID
 
 from fastapi import Request
 
+from tripper_api.auth.auth_errors import (
+    AuthenticationRequiredError,
+    CsrfValidationError,
+)
 from tripper_api.auth.auth_repository import AuthRepository
 from tripper_api.auth.auth_service import hash_token
 from tripper_api.core.database import Database
 
 SESSION_COOKIE_NAME = "tripper_session"
 CSRF_COOKIE_NAME = "tripper_csrf"
-
-
-class AuthenticationRequiredError(Exception):
-    pass
-
-
-class CsrfValidationError(Exception):
-    pass
 
 
 @dataclass(frozen=True)

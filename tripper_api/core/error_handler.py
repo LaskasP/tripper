@@ -5,8 +5,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from tripper_api.auth.google_identity import InvalidGoogleCredentialError
-from tripper_api.core.security import AuthenticationRequiredError, CsrfValidationError
+from tripper_api.auth.auth_errors import (
+    AuthenticationRequiredError,
+    CsrfValidationError,
+    InvalidGoogleCredentialError,
+)
 from tripper_api.trip.trip_errors import (
     TripDateRangeExcludesPlansError,
     TripDestinationInUseError,

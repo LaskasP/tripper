@@ -10,6 +10,7 @@ from tripper_api.auth.auth_dto import (
     GoogleConfigResponse,
     SessionResponse,
 )
+from tripper_api.auth.auth_errors import CsrfValidationError
 from tripper_api.auth.auth_identity import GoogleIdentity
 from tripper_api.auth.auth_service import AuthService
 from tripper_api.core.config import Settings
@@ -17,7 +18,6 @@ from tripper_api.core.security import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     AuthenticatedUser,
-    CsrfValidationError,
     require_current_user,
 )
 

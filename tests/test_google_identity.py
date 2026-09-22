@@ -7,10 +7,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
+from tripper_api.auth.auth_errors import InvalidGoogleCredentialError
 from tripper_api.auth.google_identity import (
     GOOGLE_CERTIFICATES_URL,
     GoogleIdentityVerifier,
-    InvalidGoogleCredentialError,
 )
 
 pytestmark = pytest.mark.asyncio(loop_factories=["selector"])

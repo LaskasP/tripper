@@ -4,12 +4,9 @@ import httpx
 import jwt
 from jwt import PyJWKSet
 
+from tripper_api.auth.auth_errors import InvalidGoogleCredentialError
 from tripper_api.auth.auth_identity import GoogleIdentity
 from tripper_api.core.constants import GOOGLE_CERTIFICATES_URL, TRUSTED_ISSUERS
-
-
-class InvalidGoogleCredentialError(Exception):
-    pass
 
 
 class GoogleIdentityVerifier:
