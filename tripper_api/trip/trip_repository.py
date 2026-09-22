@@ -59,8 +59,21 @@ class _StoredDailyPlan:
 
 
 @dataclass(frozen=True)
+class _StoredDestination:
+    id: UUID
+    name: str
+    timezone: str
+    latitude: float | None
+    longitude: float | None
+    position: int
+    revision: int
+
+
+@dataclass(frozen=True)
 class _StoredParticipantGuide:
     id: UUID
+    revision: int
+    role: TripRole
     name: str
     destination: str
     short_name: str
@@ -70,8 +83,18 @@ class _StoredParticipantGuide:
     longitude: float | None
     start_date: date
     end_date: date
+    destinations: tuple[_StoredDestination, ...]
     daily_plans: tuple[_StoredDailyPlan, ...]
     roster: tuple[tuple[str, TripRole], ...]
+
+
+@dataclass(frozen=True)
+class _StoredTripForUpdate:
+    trip: Trip
+    role: TripRole
+    destinations: tuple[Destination, ...]
+    plan_dates: frozenset[date]
+    referenced_destination_ids: frozenset[UUID]
 
 
 class TripRepository:
@@ -128,6 +151,8 @@ class TripRepository:
         statement = (
             select(
                 Trip.id,
+                Trip.revision,
+                TripMembership.role,
                 Trip.name,
                 Destination.name,
                 Trip.short_name,
@@ -151,6 +176,25 @@ class TripRepository:
         row = (await self._session.execute(statement)).tuples().one_or_none()
         if row is None:
             return None
+        destination_rows = (
+            (
+                await self._session.execute(
+                    select(
+                        Destination.id,
+                        Destination.name,
+                        Destination.timezone,
+                        Destination.latitude,
+                        Destination.longitude,
+                        Destination.position,
+                        Destination.revision,
+                    )
+                    .where(Destination.trip_id == trip_id)
+                    .order_by(Destination.position, Destination.id)
+                )
+            )
+            .tuples()
+            .all()
+        )
         roster_statement = (
             select(Account.display_name, TripMembership.role)
             .join(TripMembership, TripMembership.account_id == Account.id)
@@ -247,15 +291,98 @@ class TripRepository:
             )
         return _StoredParticipantGuide(
             id=row[0],
-            name=row[1],
-            destination=row[2],
-            short_name=row[3],
-            description=row[4],
-            timezone=row[5],
-            latitude=row[6],
-            longitude=row[7],
-            start_date=row[8],
-            end_date=row[9],
+            revision=row[1],
+            role=row[2],
+            name=row[3],
+            destination=row[4],
+            short_name=row[5],
+            description=row[6],
+            timezone=row[7],
+            latitude=row[8],
+            longitude=row[9],
+            start_date=row[10],
+            end_date=row[11],
+            destinations=tuple(_StoredDestination(*row) for row in destination_rows),
             daily_plans=tuple(daily_plans),
             roster=tuple((display_name, role) for display_name, role in roster_rows),
         )
+
+    async def load_for_update(
+        self, trip_id: UUID, account_id: UUID
+    ) -> _StoredTripForUpdate | None:
+        row = (
+            await self._session.execute(
+                select(Trip, TripMembership.role)
+                .join(TripMembership, TripMembership.trip_id == Trip.id)
+                .where(
+                    Trip.id == trip_id,
+                    TripMembership.account_id == account_id,
+                )
+                .with_for_update(of=Trip)
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        trip, role = row
+        destinations = tuple(
+            (
+                await self._session.scalars(
+                    select(Destination)
+                    .where(Destination.trip_id == trip_id)
+                    .order_by(Destination.position, Destination.id)
+                    .with_for_update()
+                )
+            ).all()
+        )
+        plan_rows = (
+            await self._session.execute(
+                select(DailyPlan.date, DailyPlan.destination_id).where(
+                    DailyPlan.trip_id == trip_id
+                )
+            )
+        ).tuples()
+        plans = tuple(plan_rows)
+        timeline_destination_rows = (
+            await self._session.scalars(
+                select(TimelineEntry.destination_id)
+                .join(DailyPlan, DailyPlan.id == TimelineEntry.daily_plan_id)
+                .where(
+                    DailyPlan.trip_id == trip_id,
+                    TimelineEntry.destination_id.is_not(None),
+                )
+            )
+        ).all()
+        timeline_destination_ids = frozenset(
+            destination_id
+            for destination_id in timeline_destination_rows
+            if destination_id is not None
+        )
+        return _StoredTripForUpdate(
+            trip=trip,
+            role=role,
+            destinations=destinations,
+            plan_dates=frozenset(plan_date for plan_date, _ in plans),
+            referenced_destination_ids=(
+                frozenset(destination_id for _, destination_id in plans)
+                | timeline_destination_ids
+            ),
+        )
+
+    async def replace_destinations(
+        self,
+        *,
+        previous: tuple[Destination, ...],
+        current: list[Destination],
+        removed: list[Destination],
+    ) -> None:
+        offset = len(previous) + len(current) + 1
+        for destination in previous:
+            destination.position += offset
+        await self._session.flush()
+        for destination in removed:
+            await self._session.delete(destination)
+        await self._session.flush()
+        for position, destination in enumerate(current):
+            destination.position = position
+            self._session.add(destination)
+        await self._session.flush()

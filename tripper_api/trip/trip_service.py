@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
     DailyPlanResponse,
+    DestinationDetailsResponse,
     LocationInput,
     PhotoResponse,
     StayResponse,
@@ -12,6 +13,7 @@ from tripper_api.trip.trip_dto import (
     TripCalendarDateResponse,
     TripCreateRequest,
     TripDetailResponse,
+    TripDetailsUpdateRequest,
     TripRosterMemberResponse,
     TripSummaryResponse,
 )
@@ -20,6 +22,22 @@ from tripper_api.trip.trip_repository import TripRepository
 
 
 class TripNotFoundError(Exception):
+    pass
+
+
+class TripEditForbiddenError(Exception):
+    pass
+
+
+class TripDateRangeExcludesPlansError(Exception):
+    pass
+
+
+class TripDestinationMismatchError(Exception):
+    pass
+
+
+class TripDestinationInUseError(Exception):
     pass
 
 
@@ -89,6 +107,8 @@ class TripService:
         location = _location(trip.latitude, trip.longitude)
         return TripDetailResponse(
             id=trip.id,
+            revision=trip.revision,
+            role=trip.role,
             name=trip.name,
             destination=trip.destination,
             short_name=trip.short_name,
@@ -97,6 +117,17 @@ class TripService:
             location=location,
             start_date=trip.start_date,
             end_date=trip.end_date,
+            destinations=[
+                DestinationDetailsResponse(
+                    id=destination.id,
+                    name=destination.name,
+                    timezone=destination.timezone,
+                    location=_location(destination.latitude, destination.longitude),
+                    position=destination.position,
+                    revision=destination.revision,
+                )
+                for destination in trip.destinations
+            ],
             calendar=[
                 TripCalendarDateResponse(
                     date=trip.start_date + timedelta(days=offset),
@@ -150,3 +181,78 @@ class TripService:
                 for display_name, role in trip.roster
             ],
         )
+
+    async def update_details(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        request: TripDetailsUpdateRequest,
+    ) -> TripDetailResponse:
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            if any(
+                plan_date < request.start_date or plan_date > request.end_date
+                for plan_date in stored.plan_dates
+            ):
+                raise TripDateRangeExcludesPlansError
+
+            existing_by_id = {
+                destination.id: destination for destination in stored.destinations
+            }
+            requested_ids = {
+                destination.id
+                for destination in request.destinations
+                if destination.id is not None
+            }
+            if not requested_ids.issubset(existing_by_id):
+                raise TripDestinationMismatchError
+            removed = [
+                destination
+                for destination in stored.destinations
+                if destination.id not in requested_ids
+            ]
+            if any(
+                destination.id in stored.referenced_destination_ids
+                for destination in removed
+            ):
+                raise TripDestinationInUseError
+
+            stored.trip.name = request.name
+            stored.trip.short_name = request.short_name
+            stored.trip.description = request.description
+            stored.trip.start_date = request.start_date
+            stored.trip.end_date = request.end_date
+            stored.trip.revision += 1
+            stored.trip.content_revision += 1
+
+            destinations: list[Destination] = []
+            for position, item in enumerate(request.destinations):
+                if item.id is None:
+                    destination = Destination(
+                        id=uuid4(),
+                        trip_id=trip_id,
+                        name=item.name,
+                        timezone=item.timezone,
+                        latitude=item.location.lat if item.location else None,
+                        longitude=item.location.lng if item.location else None,
+                        position=position,
+                    )
+                else:
+                    destination = existing_by_id[item.id]
+                    destination.name = item.name
+                    destination.timezone = item.timezone
+                    destination.latitude = item.location.lat if item.location else None
+                    destination.longitude = item.location.lng if item.location else None
+                    destination.revision += 1
+                destinations.append(destination)
+            await self._repository.replace_destinations(
+                previous=stored.destinations,
+                current=destinations,
+                removed=removed,
+            )
+        return await self.get_participant_guide(trip_id, account_id)

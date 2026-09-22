@@ -8,6 +8,7 @@ from tripper_api.trip.trip_dependencies import get_trip_service
 from tripper_api.trip.trip_dto import (
     TripCreateRequest,
     TripDetailResponse,
+    TripDetailsUpdateRequest,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_service import TripService
@@ -48,3 +49,17 @@ async def get_participant_trip(
     service: Annotated[TripService, Depends(get_trip_service)],
 ) -> TripDetailResponse:
     return await service.get_participant_guide(trip_id, user.id)
+
+
+@router.put("/trips/{trip_id}/details", response_model=TripDetailResponse)
+async def update_trip_details(
+    trip_id: UUID,
+    trip: TripDetailsUpdateRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
+    service: Annotated[TripService, Depends(get_trip_service)],
+) -> TripDetailResponse:
+    return await service.update_details(
+        trip_id=trip_id,
+        account_id=user.id,
+        request=trip,
+    )

@@ -7,11 +7,75 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from tripper_api.trip.trip_model import TripRole
 
 
+def _nonblank(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("value must not be blank")
+    return stripped
+
+
+def _iana_timezone(value: str) -> str:
+    stripped = value.strip()
+    try:
+        ZoneInfo(stripped)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("timezone must be a valid IANA timezone") from error
+    return stripped
+
+
 class LocationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
+
+
+class DestinationDetailsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    name: str = Field(min_length=1, max_length=200)
+    timezone: str = Field(min_length=1, max_length=100)
+    location: LocationInput | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_nonblank_name(cls, value: str) -> str:
+        return _nonblank(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return _iana_timezone(value)
+
+
+class TripDetailsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    short_name: str = Field(default="", max_length=80)
+    description: str = ""
+    start_date: date
+    end_date: date
+    destinations: list[DestinationDetailsInput] = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def validate_nonblank_name(cls, value: str) -> str:
+        return _nonblank(value)
+
+    @model_validator(mode="after")
+    def validate_details(self) -> "TripDetailsUpdateRequest":
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must be on or before end_date")
+        destination_ids = [
+            destination.id
+            for destination in self.destinations
+            if destination.id is not None
+        ]
+        if len(destination_ids) != len(set(destination_ids)):
+            raise ValueError("destination ids must be unique")
+        return self
 
 
 class TripCreateRequest(BaseModel):
@@ -29,20 +93,12 @@ class TripCreateRequest(BaseModel):
     @field_validator("name", "destination")
     @classmethod
     def validate_nonblank_text(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("value must not be blank")
-        return stripped
+        return _nonblank(value)
 
     @field_validator("timezone")
     @classmethod
     def validate_timezone(cls, value: str) -> str:
-        stripped = value.strip()
-        try:
-            ZoneInfo(stripped)
-        except ZoneInfoNotFoundError as error:
-            raise ValueError("timezone must be a valid IANA timezone") from error
-        return stripped
+        return _iana_timezone(value)
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "TripCreateRequest":
@@ -72,6 +128,15 @@ class TripCalendarDateResponse(BaseModel):
 class TripRosterMemberResponse(BaseModel):
     display_name: str
     role: TripRole
+
+
+class DestinationDetailsResponse(BaseModel):
+    id: UUID
+    name: str
+    timezone: str
+    location: LocationInput | None
+    position: int
+    revision: int
 
 
 class TimelineEntryResponse(BaseModel):
@@ -112,6 +177,8 @@ class TripDetailResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: UUID
+    revision: int
+    role: TripRole
     name: str
     destination: str
     short_name: str
@@ -120,6 +187,7 @@ class TripDetailResponse(BaseModel):
     location: LocationInput | None
     start_date: date
     end_date: date
+    destinations: list[DestinationDetailsResponse]
     calendar: list[TripCalendarDateResponse]
     daily_plans: list[DailyPlanResponse]
     roster: list[TripRosterMemberResponse]

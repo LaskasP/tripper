@@ -132,3 +132,95 @@ test('participant guide renders canonical API content without loading legacy JSO
   expect(requestedPaths).not.toContain('/tripper/data/trip.json');
   expect(requestedPaths).not.toContain('/tripper/data/days.json');
 });
+
+test('creator edits Trip details and ordered destinations in the planner', async ({ page }) => {
+  await page.addInitScript(() => {
+    let googleCallback: (response: { credential: string }) => void;
+    window.google = { accounts: { id: {
+      initialize(options) { googleCallback = options.callback; },
+      renderButton(element) {
+        const button = document.createElement('button');
+        button.textContent = 'Sign in with Google';
+        button.addEventListener('click', () => {
+          googleCallback({ credential: 'e2e-google-credential' });
+        });
+        element.appendChild(button);
+      },
+    } } };
+  });
+  await page.goto('/tripper/my-trips');
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: 'Create trip' }).click();
+  await page.getByLabel('Trip name').fill('Cyclades draft');
+  await page.getByLabel('Destination').fill('Cyclades');
+  await page.getByLabel('Timezone').fill('Europe/Athens');
+  await page.getByLabel('Start date').fill('2027-06-10');
+  await page.getByLabel('End date').fill('2027-06-17');
+  await page.getByRole('button', { name: 'Save trip' }).click();
+
+  await expect(page.getByRole('tab', { name: 'Publish' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Trip details' }).click();
+  const tripName = page.getByLabel('Trip name');
+  await tripName.fill('');
+  await tripName.press('Tab');
+  await expect(page.getByText('Trip name is required.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(tripName).toBeFocused();
+  await tripName.fill('Aegean summer');
+  await page.getByLabel('Start date').fill('2027-06-08');
+  await page.getByLabel('End date').fill('2027-06-19');
+  await page.getByRole('button', { name: 'Add destination' }).click();
+  await page.getByLabel('Destination 2 name').fill('Athens');
+  await page.getByLabel('Destination 2 timezone').fill('Europe/Athens');
+  await page.getByRole('button', { name: 'Move Athens up' }).click();
+
+  await expect(page.getByText('Unsaved preview')).toBeVisible();
+  await expect(page.getByTestId('trip-preview')).toContainText('Aegean summer');
+  await expect(page.getByTestId('trip-preview')).toContainText('Athens → Cyclades');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Changes saved')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Back to My Trips' }).click();
+  const updatedTrip = page.getByRole('link', { name: /Aegean summer/ });
+  await expect(updatedTrip).toContainText('Athens');
+  await expect(updatedTrip).toContainText('2027-06-08 – 2027-06-19');
+});
+
+test('traveller opening an edit URL receives no editing controls', async ({ page }) => {
+  await page.route('**/api/trips/read-only', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: '223eb014-ff17-51e7-9507-b956164ff7a4',
+        revision: 1,
+        role: 'traveller',
+        name: 'Read-only escape',
+        destination: 'Athens',
+        short_name: '',
+        description: '',
+        timezone: 'Europe/Athens',
+        location: null,
+        start_date: '2027-06-10',
+        end_date: '2027-06-10',
+        destinations: [{
+          id: '7468f63b-f89a-4c08-8cb1-d54fdd2b7389',
+          name: 'Athens',
+          timezone: 'Europe/Athens',
+          location: null,
+          position: 0,
+          revision: 1,
+        }],
+        calendar: [{ date: '2027-06-10', day_number: 1, is_planned: false }],
+        daily_plans: [],
+        roster: [{ display_name: 'Reader', role: 'traveller' }],
+      }),
+    });
+  });
+
+  await page.goto('/tripper/trips/read-only/edit');
+
+  await expect(page.getByRole('heading', { name: 'Read-only escape' })).toBeVisible();
+  await expect(page.getByText('Traveller access is read-only.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Trip details' })).toHaveCount(0);
+});

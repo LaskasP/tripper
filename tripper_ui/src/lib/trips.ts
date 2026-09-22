@@ -23,6 +23,8 @@ export interface NewTrip {
 
 export interface TripDetail {
   id: string;
+  revision: number;
+  role: TripRole;
   name: string;
   destination: string;
   short_name: string;
@@ -31,6 +33,14 @@ export interface TripDetail {
   location: { lat: number; lng: number } | null;
   start_date: string;
   end_date: string;
+  destinations: Array<{
+    id: string;
+    name: string;
+    timezone: string;
+    location: { lat: number; lng: number } | null;
+    position: number;
+    revision: number;
+  }>;
   calendar: Array<{
     date: string;
     day_number: number;
@@ -63,6 +73,20 @@ export interface TripDetail {
   roster: Array<{
     display_name: string;
     role: TripRole;
+  }>;
+}
+
+export interface TripDetailsUpdate {
+  name: string;
+  short_name: string;
+  description: string;
+  start_date: string;
+  end_date: string;
+  destinations: Array<{
+    id?: string;
+    name: string;
+    timezone: string;
+    location: { lat: number; lng: number } | null;
   }>;
 }
 
@@ -122,5 +146,15 @@ export function createTrip(trip: NewTrip): Promise<TripSummary> {
 
 export function loadParticipantTrip(tripId: string): Promise<TripDetail> {
   return apiRequest<TripDetail>(`/api/trips/${encodeURIComponent(tripId)}`);
+}
+
+export function updateTripDetails(
+  tripId: string,
+  details: TripDetailsUpdate,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/details`,
+    { method: "PUT", body: JSON.stringify(details) },
+  );
 }
 import { sessionCsrfToken } from "./auth";
