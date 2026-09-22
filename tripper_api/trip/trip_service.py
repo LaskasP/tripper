@@ -17,28 +17,15 @@ from tripper_api.trip.trip_dto import (
     TripRosterMemberResponse,
     TripSummaryResponse,
 )
+from tripper_api.trip.trip_errors import (
+    TripDateRangeExcludesPlansError,
+    TripDestinationInUseError,
+    TripDestinationMismatchError,
+    TripEditForbiddenError,
+    TripNotFoundError,
+)
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
 from tripper_api.trip.trip_repository import TripRepository
-
-
-class TripNotFoundError(Exception):
-    pass
-
-
-class TripEditForbiddenError(Exception):
-    pass
-
-
-class TripDateRangeExcludesPlansError(Exception):
-    pass
-
-
-class TripDestinationMismatchError(Exception):
-    pass
-
-
-class TripDestinationInUseError(Exception):
-    pass
 
 
 def _location(latitude: float | None, longitude: float | None) -> LocationInput | None:

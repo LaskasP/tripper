@@ -7,7 +7,7 @@ from starlette.exceptions import HTTPException
 
 from tripper_api.auth.google_identity import InvalidGoogleCredentialError
 from tripper_api.core.security import AuthenticationRequiredError, CsrfValidationError
-from tripper_api.trip.trip_service import (
+from tripper_api.trip.trip_errors import (
     TripDateRangeExcludesPlansError,
     TripDestinationInUseError,
     TripDestinationMismatchError,
