@@ -1,28 +1,18 @@
-from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.trip.trip_dto import (
+    LocationInput,
+    TripCalendarDateResponse,
     TripCreateRequest,
+    TripDetailResponse,
+    TripRosterMemberResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
-from tripper_api.trip.trip_repository import TripDetailRecord, TripRepository
-
-
-@dataclass(frozen=True)
-class TripCalendarDateRecord:
-    date: date
-    day_number: int
-    is_planned: bool = False
-
-
-@dataclass(frozen=True)
-class ParticipantTripGuideRecord:
-    trip: TripDetailRecord
-    calendar: tuple[TripCalendarDateRecord, ...]
+from tripper_api.trip.trip_repository import TripRepository
 
 
 class TripNotFoundError(Exception):
@@ -79,20 +69,37 @@ class TripService:
         async with self._session.begin():
             return await self._repository.list_for_account(account_id)
 
-    async def get_for_account(
+    async def get_participant_guide(
         self, trip_id: UUID, account_id: UUID
-    ) -> ParticipantTripGuideRecord:
+    ) -> TripDetailResponse:
         async with self._session.begin():
-            trip = await self._repository.get_for_account(trip_id, account_id)
+            trip = await self._repository.load_participant_guide(trip_id, account_id)
         if trip is None:
             raise TripNotFoundError
-        return ParticipantTripGuideRecord(
-            trip=trip,
-            calendar=tuple(
-                TripCalendarDateRecord(
+        location = (
+            LocationInput(lat=trip.latitude, lng=trip.longitude)
+            if trip.latitude is not None and trip.longitude is not None
+            else None
+        )
+        return TripDetailResponse(
+            id=trip.id,
+            name=trip.name,
+            destination=trip.destination,
+            short_name=trip.short_name,
+            description=trip.description,
+            timezone=trip.timezone,
+            location=location,
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            calendar=[
+                TripCalendarDateResponse(
                     date=trip.start_date + timedelta(days=offset),
                     day_number=offset + 1,
                 )
                 for offset in range((trip.end_date - trip.start_date).days + 1)
-            ),
+            ],
+            roster=[
+                TripRosterMemberResponse(display_name=display_name, role=role)
+                for display_name, role in trip.roster
+            ],
         )

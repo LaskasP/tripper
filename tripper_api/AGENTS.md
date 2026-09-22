@@ -10,7 +10,7 @@ Preserve unrelated worktree changes. Prefer correctness and architectural consis
 
 - Organize by feature and prefix filenames with the feature/package name using Python snake_case: for example, `owner/owner_controller.py`, `owner/owner_service.py`, `owner/owner_dto.py`, `owner/owner_repository.py`, and `owner/owner_model.py` as needed. Extract useful modules rather than creating empty layers.
 - Place shared database, configuration, security, and error infrastructure in `core/`.
-- Controllers handle HTTP input, dependencies, status codes, and response mapping. Keep business rules and SQL out of controllers.
+- Controllers handle HTTP input, dependencies, status codes, and transport-only response mapping. Services may return a Pydantic response DTO directly when it is the canonical result of the operation; do not add pass-through result types solely to preserve a mapping step. Keep business rules and SQL out of controllers.
 - Services implement business operations and resource-level authorization. Keep FastAPI `Depends` and HTTP exceptions out of services and repositories.
 - Repositories encapsulate SQLAlchemy queries and persistence operations. Prefer meaningful feature-specific operations over generic CRUD frameworks.
 - Use concrete service and repository classes with explicit constructor dependencies. Do not require interfaces, abstract base classes, or a unit-of-work abstraction. Pure helpers may be ordinary functions.
@@ -43,6 +43,7 @@ Preserve unrelated worktree changes. Prefer correctness and architectural consis
 
 - Treat existing routes, status codes, and snake_case JSON fields as stable contracts. Breaking changes require explicit approval and coordinated client/test updates.
 - Define explicit Pydantic request and response DTOs. Reject unknown write fields and derive identity, ownership, and roles from trusted server state.
+- Keep repository query projections private to the application module. Prefer one canonical result at the service interface over chains of equivalent repository and service dataclasses.
 - Authenticate through FastAPI dependencies; enforce resource-level authorization in the service performing the operation. Management endpoints require authentication; public endpoints must be intentionally public.
 - Authentication overrides belong in tests, never production bypasses.
 - Services raise application-specific exceptions. Central FastAPI handlers map them to HTTP status codes and a consistent response shape: `{"error": {"code": "stable_code", "message": "Public message"}}`.

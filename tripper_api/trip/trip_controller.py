@@ -6,11 +6,8 @@ from fastapi import APIRouter, Depends, status
 from tripper_api.core.security import AuthenticatedUser, require_current_user
 from tripper_api.trip.trip_dependencies import get_trip_service
 from tripper_api.trip.trip_dto import (
-    LocationInput,
-    TripCalendarDateResponse,
     TripCreateRequest,
     TripDetailResponse,
-    TripRosterMemberResponse,
     TripSummaryResponse,
 )
 from tripper_api.trip.trip_service import TripService
@@ -50,36 +47,4 @@ async def get_participant_trip(
     user: Annotated[AuthenticatedUser, Depends(require_current_user)],
     service: Annotated[TripService, Depends(get_trip_service)],
 ) -> TripDetailResponse:
-    guide = await service.get_for_account(trip_id, user.id)
-    trip = guide.trip
-    location = (
-        LocationInput(lat=trip.latitude, lng=trip.longitude)
-        if trip.latitude is not None and trip.longitude is not None
-        else None
-    )
-    return TripDetailResponse(
-        id=trip.id,
-        name=trip.name,
-        destination=trip.destination,
-        short_name=trip.short_name,
-        description=trip.description,
-        timezone=trip.timezone,
-        location=location,
-        start_date=trip.start_date,
-        end_date=trip.end_date,
-        calendar=[
-            TripCalendarDateResponse(
-                date=calendar_date.date,
-                day_number=calendar_date.day_number,
-                is_planned=calendar_date.is_planned,
-            )
-            for calendar_date in guide.calendar
-        ],
-        roster=[
-            TripRosterMemberResponse(
-                display_name=member.display_name,
-                role=member.role,
-            )
-            for member in trip.roster
-        ],
-    )
+    return await service.get_participant_guide(trip_id, user.id)

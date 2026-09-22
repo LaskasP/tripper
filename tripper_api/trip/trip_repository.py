@@ -11,13 +11,7 @@ from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripR
 
 
 @dataclass(frozen=True)
-class TripRosterMemberRecord:
-    display_name: str
-    role: TripRole
-
-
-@dataclass(frozen=True)
-class TripDetailRecord:
+class _StoredParticipantGuide:
     id: UUID
     name: str
     destination: str
@@ -28,7 +22,7 @@ class TripDetailRecord:
     longitude: float | None
     start_date: date
     end_date: date
-    roster: tuple[TripRosterMemberRecord, ...]
+    roster: tuple[tuple[str, TripRole], ...]
 
 
 class TripRepository:
@@ -79,9 +73,9 @@ class TripRepository:
             for row in rows
         ]
 
-    async def get_for_account(
+    async def load_participant_guide(
         self, trip_id: UUID, account_id: UUID
-    ) -> TripDetailRecord | None:
+    ) -> _StoredParticipantGuide | None:
         statement = (
             select(
                 Trip.id,
@@ -123,7 +117,7 @@ class TripRepository:
             )
         )
         roster_rows = (await self._session.execute(roster_statement)).tuples().all()
-        return TripDetailRecord(
+        return _StoredParticipantGuide(
             id=row[0],
             name=row[1],
             destination=row[2],
@@ -134,8 +128,5 @@ class TripRepository:
             longitude=row[7],
             start_date=row[8],
             end_date=row[9],
-            roster=tuple(
-                TripRosterMemberRecord(display_name=display_name, role=role)
-                for display_name, role in roster_rows
-            ),
+            roster=tuple((display_name, role) for display_name, role in roster_rows),
         )
