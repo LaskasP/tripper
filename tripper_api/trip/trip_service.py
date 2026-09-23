@@ -1,5 +1,4 @@
-from datetime import date, timedelta
-from typing import Protocol
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,30 +26,13 @@ from tripper_api.trip.trip_errors import (
     TripRevisionConflictError,
 )
 from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
-from tripper_api.trip.trip_repository import TripRepository
+from tripper_api.trip.trip_repository import TripRepository, _StoredTripForUpdate
 
 
 def _location(latitude: float | None, longitude: float | None) -> LocationInput | None:
     if latitude is None or longitude is None:
         return None
     return LocationInput(lat=latitude, lng=longitude)
-
-
-class _StoredTripUpdate(Protocol):
-    @property
-    def trip(self) -> Trip: ...
-
-    @property
-    def role(self) -> TripRole: ...
-
-    @property
-    def destinations(self) -> tuple[Destination, ...]: ...
-
-    @property
-    def plan_dates(self) -> frozenset[date]: ...
-
-    @property
-    def referenced_destination_ids(self) -> frozenset[UUID]: ...
 
 
 class TripService:
@@ -214,7 +196,7 @@ class TripService:
     async def _apply_details_update(
         self,
         trip_id: UUID,
-        stored: _StoredTripUpdate,
+        stored: _StoredTripForUpdate,
         request: TripDetailsUpdateRequest,
     ) -> None:
         if any(

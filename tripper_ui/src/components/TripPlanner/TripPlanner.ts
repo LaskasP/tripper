@@ -7,7 +7,11 @@ import {
   type TripDetailsUpdate,
 } from "../../lib/trips";
 import { loadCurrentAccount, renderGoogleSignIn } from "../../lib/auth";
-import { clearTripDrafts, tripDraftKey } from "../../lib/drafts";
+import {
+  clearTripDetailsDrafts,
+  tripDetailsDraftKey,
+  tripDetailsDraftPrefix,
+} from "../../lib/drafts";
 
 type WorkspaceSection = "plan" | "details" | "people" | "publish";
 
@@ -54,23 +58,54 @@ function detailsDraft(trip: TripDetail): TripDetailsDraft {
   };
 }
 
-function recoveredDetailsDraft(key: string): TripDetailsDraft | undefined {
-  const stored = sessionStorage.getItem(key);
-  if (!stored) return undefined;
-  try {
-    const value = JSON.parse(stored) as Partial<TripDetailsDraft>;
-    if (
-      typeof value.name === "string" &&
-      typeof value.short_name === "string" &&
-      typeof value.description === "string" &&
-      typeof value.start_date === "string" &&
-      typeof value.end_date === "string" &&
-      Array.isArray(value.destinations)
-    ) {
-      return value as TripDetailsDraft;
+interface RecoveredDetailsDraft {
+  draft: TripDetailsDraft;
+  key: string;
+  starting_revision: number;
+}
+
+function recoveredDetailsDraft(
+  accountId: string,
+  tripId: string,
+  currentRevision: number,
+): RecoveredDetailsDraft | undefined {
+  const prefix = tripDetailsDraftPrefix(accountId, tripId);
+  const keys = Array.from({ length: sessionStorage.length }, (_, index) =>
+    sessionStorage.key(index),
+  ).filter((key): key is string => key?.startsWith(prefix) ?? false);
+  keys.sort((left, right) => {
+    const leftRevision = Number(left.slice(prefix.length));
+    const rightRevision = Number(right.slice(prefix.length));
+    if (leftRevision === currentRevision) return -1;
+    if (rightRevision === currentRevision) return 1;
+    return rightRevision - leftRevision;
+  });
+  for (const key of keys) {
+    const stored = sessionStorage.getItem(key);
+    const startingRevision = Number(key.slice(prefix.length));
+    if (!stored || !Number.isInteger(startingRevision)) {
+      sessionStorage.removeItem(key);
+      continue;
     }
-  } catch {
-    sessionStorage.removeItem(key);
+    try {
+      const value = JSON.parse(stored) as Partial<TripDetailsDraft>;
+      if (
+        typeof value.name === "string" &&
+        typeof value.short_name === "string" &&
+        typeof value.description === "string" &&
+        typeof value.start_date === "string" &&
+        typeof value.end_date === "string" &&
+        Array.isArray(value.destinations)
+      ) {
+        return {
+          draft: value as TripDetailsDraft,
+          key,
+          starting_revision: startingRevision,
+        };
+      }
+    } catch {
+      sessionStorage.removeItem(key);
+    }
   }
   return undefined;
 }
@@ -130,15 +165,11 @@ function renderEditorWorkspace(
   accountId: string,
 ): void {
   let trip = initialTrip;
-  let startingRevision = trip.revision;
-  let draftStorageKey = tripDraftKey(
-    accountId,
-    trip.id,
-    "trip_details",
-    startingRevision,
-  );
-  const recovered = recoveredDetailsDraft(draftStorageKey);
-  let draft = recovered ?? detailsDraft(trip);
+  const recovered = recoveredDetailsDraft(accountId, trip.id, trip.revision);
+  let startingRevision = recovered?.starting_revision ?? trip.revision;
+  let draftStorageKey =
+    recovered?.key ?? tripDetailsDraftKey(accountId, trip.id, startingRevision);
+  let draft = recovered?.draft ?? detailsDraft(trip);
   let dirty = recovered !== undefined;
   let activeSection: WorkspaceSection = recovered ? "details" : "plan";
   let saveCurrentForm: (() => Promise<boolean>) | undefined;
@@ -217,7 +248,9 @@ function renderEditorWorkspace(
   });
   discardAndLeave.addEventListener("click", () => {
     clearDraft();
+    draft = detailsDraft(trip);
     dirty = false;
+    refreshPreview();
     navigationDialog.close();
     pendingNavigation?.();
   });
@@ -255,6 +288,18 @@ function renderEditorWorkspace(
     dirty = true;
     persistDraft();
     refreshPreview();
+  };
+
+  const adoptServerTrip = (
+    serverTrip: TripDetail,
+    retainActiveDraft: boolean,
+  ): void => {
+    clearDraft();
+    trip = serverTrip;
+    startingRevision = serverTrip.revision;
+    draftStorageKey = tripDetailsDraftKey(accountId, trip.id, startingRevision);
+    if (!retainActiveDraft) draft = detailsDraft(serverTrip);
+    workspaceName.textContent = serverTrip.name;
   };
 
   const showPlan = (): void => {
@@ -561,12 +606,30 @@ function renderEditorWorkspace(
       conflict.className = "trip-details-form__conflict";
       const conflictTitle = document.createElement("h2");
       conflictTitle.textContent = "Latest saved values";
-      const latestName = document.createElement("p");
-      latestName.textContent = latest.name;
-      const latestRoute = document.createElement("p");
-      latestRoute.textContent = latest.destinations.map(({ name }) => name).join(" → ");
-      const latestDates = document.createElement("p");
-      latestDates.textContent = `${latest.start_date} – ${latest.end_date}`;
+      const latestFields = document.createElement("dl");
+      const appendLatestField = (label: string, value: string): void => {
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const detail = document.createElement("dd");
+        detail.textContent = value || "None";
+        latestFields.append(term, detail);
+      };
+      appendLatestField("Trip name", latest.name);
+      appendLatestField("Short name", latest.short_name);
+      appendLatestField("Description", latest.description);
+      appendLatestField("Start date", latest.start_date);
+      appendLatestField("End date", latest.end_date);
+      const destinationsTitle = document.createElement("h3");
+      destinationsTitle.textContent = "Destinations";
+      const latestDestinations = document.createElement("ol");
+      latest.destinations.forEach((destination) => {
+        const item = document.createElement("li");
+        const location = destination.location
+          ? `${destination.location.lat}, ${destination.location.lng}`
+          : "No location";
+        item.textContent = `${destination.name} — ${destination.timezone} — ${location}`;
+        latestDestinations.appendChild(item);
+      });
       const explanation = document.createElement("p");
       explanation.textContent =
         "Your unsaved values are still in the form. Reload the saved values or deliberately reapply yours.";
@@ -576,16 +639,7 @@ function renderEditorWorkspace(
       reloadLatest.type = "button";
       reloadLatest.textContent = "Reload latest";
       reloadLatest.addEventListener("click", () => {
-        clearDraft();
-        trip = latest;
-        startingRevision = latest.revision;
-        draftStorageKey = tripDraftKey(
-          accountId,
-          trip.id,
-          "trip_details",
-          startingRevision,
-        );
-        draft = detailsDraft(latest);
+        adoptServerTrip(latest, false);
         dirty = false;
         refreshPreview();
         showDetails();
@@ -594,15 +648,7 @@ function renderEditorWorkspace(
       reapply.type = "button";
       reapply.textContent = "Reapply my changes";
       reapply.addEventListener("click", () => {
-        clearDraft();
-        trip = latest;
-        startingRevision = latest.revision;
-        draftStorageKey = tripDraftKey(
-          accountId,
-          trip.id,
-          "trip_details",
-          startingRevision,
-        );
+        adoptServerTrip(latest, true);
         persistDraft();
         conflict.remove();
         summary.textContent = "Review your retained values, then retry the save.";
@@ -611,9 +657,9 @@ function renderEditorWorkspace(
       conflictActions.append(reloadLatest, reapply);
       conflict.append(
         conflictTitle,
-        latestName,
-        latestRoute,
-        latestDates,
+        latestFields,
+        destinationsTitle,
+        latestDestinations,
         explanation,
         conflictActions,
       );
@@ -624,7 +670,7 @@ function renderEditorWorkspace(
 
     const makeReadOnlyAfterPermissionLoss = (): void => {
       permissionLost = true;
-      clearTripDrafts(trip.id);
+      clearTripDetailsDrafts(trip.id);
       form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")
         .forEach((control) => (control.readOnly = true));
       form.querySelectorAll<HTMLButtonElement>("button")
@@ -645,7 +691,7 @@ function renderEditorWorkspace(
         void (async () => {
           const currentAccount = await loadCurrentAccount();
           if (currentAccount.id !== accountId) {
-            clearTripDrafts();
+            clearTripDetailsDrafts();
             window.location.assign("/tripper/my-trips");
             return;
           }
@@ -691,18 +737,8 @@ function renderEditorWorkspace(
       };
       try {
         const savedTrip = await updateTripDetails(trip.id, request);
-        clearDraft();
-        trip = savedTrip;
-        startingRevision = trip.revision;
-        draftStorageKey = tripDraftKey(
-          accountId,
-          trip.id,
-          "trip_details",
-          startingRevision,
-        );
-        draft = detailsDraft(trip);
+        adoptServerTrip(savedTrip, false);
         dirty = false;
-        workspaceName.textContent = trip.name;
         refreshPreview();
         showDetails();
         const saved = document.createElement("p");
@@ -734,6 +770,7 @@ function renderEditorWorkspace(
       void saveDetails();
     });
     content.replaceChildren(form);
+    if (startingRevision !== trip.revision) showConflict(trip);
   };
 
   const sections: Array<[WorkspaceSection, string, () => void]> = [
@@ -793,7 +830,7 @@ export async function renderTripPlanner(
       loadParticipantTrip(tripId),
     ]);
     if (trip.role === "traveller") {
-      clearTripDrafts(trip.id);
+      clearTripDetailsDrafts(trip.id);
       renderReadOnlyWorkspace(app, trip);
       return;
     }
@@ -801,7 +838,7 @@ export async function renderTripPlanner(
     renderEditorWorkspace(app, trip, account.id);
   } catch (caught) {
     if (caught instanceof ApiError && [403, 404].includes(caught.status)) {
-      clearTripDrafts(tripId);
+      clearTripDetailsDrafts(tripId);
     }
     loading.className = "error";
     loading.textContent =

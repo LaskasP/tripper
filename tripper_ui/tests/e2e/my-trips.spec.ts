@@ -212,6 +212,16 @@ test('creator edits Trip details and ordered destinations in the planner', async
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Changes saved')).toBeVisible();
 
+  await page.getByLabel('Trip name').fill('Discard this value');
+  await page.getByRole('tab', { name: 'Plan' }).click();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Plan' })).toBeVisible();
+  await expect(page.getByTestId('trip-preview')).toContainText('Saved guide preview');
+  await expect(page.getByTestId('trip-preview')).toContainText('Aegean summer');
+  await expect(page.getByTestId('trip-preview')).not.toContainText('Discard this value');
+  await page.getByRole('tab', { name: 'Trip details' }).click();
+  await expect(page.getByLabel('Trip name')).toHaveValue('Aegean summer');
+
   await page.getByRole('link', { name: 'Back to My Trips' }).click();
   const updatedTrip = page.getByRole('link', { name: /Aegean summer/ });
   await expect(updatedTrip).toContainText('Athens');
@@ -220,6 +230,17 @@ test('creator edits Trip details and ordered destinations in the planner', async
 
 test('editor sees latest values and deliberately reapplies after a revision conflict', async ({ page }) => {
   const trip = editableTrip();
+  const latestValues = {
+    ...trip,
+    revision: 2,
+    name: 'Saved elsewhere',
+    description: 'Latest saved description',
+    destinations: [{
+      ...trip.destinations[0],
+      timezone: 'Atlantic/Azores',
+      location: { lat: 37.74, lng: -25.67 },
+    }],
+  };
   await page.route('**/api/auth/session', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
@@ -234,7 +255,7 @@ test('editor sees latest values and deliberately reapplies after a revision conf
           error: {
             code: 'trip_revision_conflict',
             message: 'This Trip changed after editing started',
-            latest_values: { ...trip, revision: 2, name: 'Saved elsewhere' },
+            latest_values: latestValues,
           },
         }),
       });
@@ -258,10 +279,52 @@ test('editor sees latest values and deliberately reapplies after a revision conf
 
   await expect(page.getByRole('heading', { name: 'Latest saved values' })).toBeVisible();
   await expect(page.getByText('Saved elsewhere')).toBeVisible();
+  await expect(page.getByText('Latest saved description')).toBeVisible();
+  await expect(page.getByText(/Atlantic\/Azores/)).toBeVisible();
+  await expect(page.getByText(/37.74, -25.67/)).toBeVisible();
   await expect(page.getByLabel('Trip name')).toHaveValue('My retained edit');
   await page.getByRole('button', { name: 'Reapply my changes' }).click();
   await page.getByRole('button', { name: 'Retry save' }).click();
   await expect(page.getByText('Changes saved')).toBeVisible();
+});
+
+test('older-revision draft is recovered and compared with latest saved values', async ({ page }) => {
+  const trip = { ...editableTrip(), revision: 2, name: 'Saved elsewhere' };
+  const recoveredDraft = {
+    name: 'Recovered local work',
+    short_name: 'Local',
+    description: 'Unsaved description',
+    start_date: trip.start_date,
+    end_date: trip.end_date,
+    destinations: [{
+      id: trip.destinations[0].id,
+      name: 'Local Cyclades',
+      timezone: 'Europe/Athens',
+      latitude: '',
+      longitude: '',
+    }],
+  };
+  await page.addInitScript(({ key, value }) => {
+    sessionStorage.setItem(key, value);
+  }, {
+    key: `tripper:draft:trip_details:account-one:${trip.id}:1`,
+    value: JSON.stringify(recoveredDraft),
+  });
+  await page.route('**/api/auth/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
+  }));
+  await page.route('**/api/trips/*', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(trip),
+  }));
+
+  await page.goto(`/tripper/trips/${trip.id}/edit`);
+
+  await expect(page.getByLabel('Trip name')).toHaveValue('Recovered local work');
+  await expect(page.getByText('Unsaved preview')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Latest saved values' })).toBeVisible();
+  await expect(page.getByText('Saved elsewhere')).toBeVisible();
 });
 
 test('permission loss keeps values copyable but clears their recoverable draft', async ({ page }) => {
