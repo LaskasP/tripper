@@ -178,6 +178,64 @@ test('editor manages independent Timeline entries and readers get no editing con
   await reader.close();
 });
 
+test('editor manages a public-safe Stay and the guide remains read-only', async ({ page }) => {
+  await page.addInitScript(() => {
+    let googleCallback: (response: { credential: string }) => void;
+    window.google = { accounts: { id: {
+      initialize(options) { googleCallback = options.callback; },
+      renderButton(element) {
+        const button = document.createElement('button');
+        button.textContent = 'Sign in with Google';
+        button.addEventListener('click', () => googleCallback({ credential: 'e2e-google-credential' }));
+        element.appendChild(button);
+      },
+    } } };
+  });
+  await page.goto('/tripper/my-trips');
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: 'Create trip' }).click();
+  await page.getByLabel('Trip name').fill('Stay editing');
+  await page.getByLabel('Destination').fill('Naxos');
+  await page.getByLabel('Timezone').fill('Europe/Athens');
+  await page.getByLabel('Start date').fill('2027-06-10');
+  await page.getByLabel('End date').fill('2027-06-10');
+  await page.getByRole('button', { name: 'Save trip' }).click();
+  await page.getByLabel('Day title').fill('Island arrival');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+
+  await page.getByRole('button', { name: 'Add stay' }).click();
+  await page.getByLabel('Accommodation name').fill('Aegean House');
+  await page.getByLabel('Address').fill('Port Road 1');
+  await page.getByLabel('Latitude').fill('37.45');
+  await page.getByLabel('Longitude').fill('25.33');
+  await page.getByLabel('Check-in time').fill('15:00');
+  await page.getByLabel('Check-out time').fill('11:00');
+  await page.getByLabel('Booking platform').selectOption('airbnb');
+  await page.getByLabel('Public listing HTTPS URL').fill('https://example.com/aegean-house');
+  await page.getByRole('button', { name: 'Save stay' }).click();
+  await expect(page.getByText('Aegean House · Port Road 1')).toBeVisible();
+
+  const guide = await page.context().newPage();
+  await guide.goto(page.url().replace(/\/edit$/, ''));
+  await expect(guide.getByRole('heading', { name: 'Aegean House' })).toBeVisible();
+  await expect(guide.getByText('Port Road 1')).toBeVisible();
+  await expect(guide.getByRole('link', { name: 'Airbnb' })).toHaveAttribute(
+    'href',
+    'https://example.com/aegean-house',
+  );
+  await expect(guide.getByRole('button', { name: 'Edit stay' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Edit stay' }).click();
+  await page.getByLabel('Accommodation name').fill('Aegean Suites');
+  await page.getByRole('button', { name: 'Save stay' }).click();
+  await expect(page.getByText('Aegean Suites · Port Road 1')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear stay' }).click();
+  await expect(page.getByRole('button', { name: 'Add stay' })).toBeVisible();
+  await guide.reload();
+  await expect(guide.getByText('Aegean House')).toHaveCount(0);
+  await guide.close();
+});
+
 test('editor adds, recovers, reorders, and removes Daily plan photos', async ({ page }) => {
   await page.addInitScript(() => {
     let googleCallback: (response: { credential: string }) => void;

@@ -35,6 +35,8 @@ class _StoredTimelineEntry:
 
 @dataclass(frozen=True)
 class _StoredStay:
+    id: UUID
+    revision: int
     name: str
     address: str
     latitude: float | None
@@ -286,6 +288,8 @@ class TripRepository:
                 (
                     await self._session.execute(
                         select(
+                            Stay.id,
+                            Stay.revision,
                             Stay.name,
                             Stay.address,
                             Stay.latitude,
@@ -447,6 +451,18 @@ class TripRepository:
 
     def add_timeline_entry(self, entry: TimelineEntry) -> None:
         self._session.add(entry)
+
+    async def stay(self, daily_plan_id: UUID) -> Stay | None:
+        result = await self._session.scalars(
+            select(Stay).where(Stay.daily_plan_id == daily_plan_id)
+        )
+        return result.one_or_none()
+
+    def add_stay(self, stay: Stay) -> None:
+        self._session.add(stay)
+
+    async def delete_stay(self, stay: Stay) -> None:
+        await self._session.delete(stay)
 
     def add_photo(self, photo: Photo) -> None:
         self._session.add(photo)

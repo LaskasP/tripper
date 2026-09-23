@@ -14,6 +14,8 @@ export interface TimelineEntry {
 export type BookingPlatform = "booking.com" | "airbnb";
 
 export interface Stay {
+  id?: string;
+  revision?: number;
   name: string;
   address: string;
   location?: Location;

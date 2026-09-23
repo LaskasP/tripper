@@ -358,6 +358,162 @@ async def test_daily_plan_writes_reject_stale_creation_invalid_input_and_travell
         ] == "Arrival"
 
 
+async def test_editor_creates_edits_and_clears_an_independent_stay(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        current = detail
+        for plan_date in ("2027-06-10", "2027-06-11"):
+            response = await client.put(
+                f"/api/trips/{trip_id}/daily-plans/{plan_date}",
+                json={
+                    "starting_revision": current["content_revision"],
+                    "destination_id": detail["destinations"][0]["id"],
+                    "title": "Island day",
+                    "summary": "",
+                    "background_image": "",
+                },
+            )
+            current = response.json()
+        first_plan, second_plan = current["daily_plans"]
+        first_path = f"/api/trips/{trip_id}/daily-plans/{first_plan['id']}/stay"
+        second_path = f"/api/trips/{trip_id}/daily-plans/{second_plan['id']}/stay"
+
+        first_created = await client.put(
+            first_path,
+            json={
+                "starting_revision": first_plan["revision"],
+                "name": "  Aegean House  ",
+                "address": "  Port Road 1  ",
+                "location": {"lat": 37.45, "lng": 25.33},
+                "check_in": "15:00",
+                "check_out": "11:00",
+                "booking_platform": "airbnb",
+                "public_listing_url": "https://example.com/aegean-house",
+            },
+        )
+        first_stay = first_created.json()["daily_plans"][0]["stay"]
+        second_created = await client.put(
+            second_path,
+            json={
+                "starting_revision": second_plan["revision"],
+                "name": "Harbour Hotel",
+            },
+        )
+        edited = await client.put(
+            first_path,
+            json={
+                "id": first_stay["id"],
+                "starting_revision": first_stay["revision"],
+                "name": "Aegean Suites",
+                "address": "",
+                "booking_platform": "booking.com",
+                "public_listing_url": "https://example.com/aegean-suites",
+            },
+        )
+        edited_stay = edited.json()["daily_plans"][0]["stay"]
+        cleared = await client.request(
+            "DELETE",
+            first_path,
+            json={"starting_revision": edited_stay["revision"]},
+        )
+
+    assert first_created.status_code == 200
+    assert first_stay["name"] == "Aegean House"
+    assert first_stay["address"] == "Port Road 1"
+    assert first_stay["location"] == {"lat": 37.45, "lng": 25.33}
+    assert first_stay["check_in"] == "15:00:00"
+    assert first_stay["check_out"] == "11:00:00"
+    assert first_stay["revision"] == 1
+    assert second_created.status_code == 200
+    assert edited_stay["id"] == first_stay["id"]
+    assert edited_stay["revision"] == 2
+    assert edited_stay["name"] == "Aegean Suites"
+    assert edited_stay["location"] is None
+    assert cleared.status_code == 200
+    first_after_clear, second_after_clear = cleared.json()["daily_plans"]
+    assert first_after_clear["stay"] is None
+    assert second_after_clear["stay"]["name"] == "Harbour Hotel"
+
+
+async def test_stay_writes_reject_invalid_private_stale_and_unauthorized_data(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        with_plan = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = with_plan.json()["daily_plans"][0]
+        path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/stay"
+        base = {
+            "starting_revision": plan["revision"],
+            "name": "Aegean House",
+        }
+        invalid_requests = [
+            {**base, "name": "   "},
+            {**base, "location": {"lat": 91, "lng": 25}},
+            {**base, "check_in": "15:00+02:00"},
+            {**base, "booking_platform": "direct"},
+            {**base, "public_listing_url": "http://example.com/private"},
+            {**base, "confirmation_number": "SECRET"},
+        ]
+        rejected = [
+            await client.put(path, json=request) for request in invalid_requests
+        ]
+        created = await client.put(path, json=base)
+        stay = created.json()["daily_plans"][0]["stay"]
+        stale = await client.put(
+            path,
+            json={
+                "id": stay["id"],
+                "starting_revision": stay["revision"] + 1,
+                "name": "Stale edit",
+            },
+        )
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+            display_name="Jamie Traveller",
+            role="traveller",
+        )
+        user["id"] = JAMIE_ID
+        forbidden = await client.request(
+            "DELETE", path, json={"starting_revision": stay["revision"]}
+        )
+        unchanged = await client.get(f"/api/trips/{trip_id}")
+
+    assert all(response.status_code == 422 for response in rejected)
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "stay_revision_conflict"
+    assert forbidden.status_code == 403
+    projected = unchanged.json()["daily_plans"][0]["stay"]
+    assert projected["name"] == "Aegean House"
+    assert set(projected) == {
+        "id",
+        "revision",
+        "name",
+        "address",
+        "location",
+        "check_in",
+        "check_out",
+        "public_listing_url",
+        "booking_platform",
+    }
+
+
 async def test_editor_creates_independent_timeline_entries_in_chronological_order(
     database_settings: Settings,
 ) -> None:

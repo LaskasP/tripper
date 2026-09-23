@@ -50,6 +50,30 @@ export interface PhotoDetail {
   caption: string;
 }
 
+export interface StayDetail {
+  id: string;
+  revision: number;
+  name: string;
+  address: string;
+  location: { lat: number; lng: number } | null;
+  check_in: string | null;
+  check_out: string | null;
+  public_listing_url: string | null;
+  booking_platform: "booking.com" | "airbnb" | null;
+}
+
+export interface StayWrite {
+  id?: string;
+  starting_revision: number;
+  name: string;
+  address?: string;
+  location?: { lat: number; lng: number } | null;
+  check_in?: string | null;
+  check_out?: string | null;
+  public_listing_url?: string | null;
+  booking_platform?: "booking.com" | "airbnb" | null;
+}
+
 export interface TripDetail {
   id: string;
   revision: number;
@@ -87,15 +111,7 @@ export interface TripDetail {
     title: string;
     summary: string;
     background_image: string;
-    stay: {
-      name: string;
-      address: string;
-      location: { lat: number; lng: number } | null;
-      check_in: string | null;
-      check_out: string | null;
-      public_listing_url: string | null;
-      booking_platform: "booking.com" | "airbnb" | null;
-    } | null;
+    stay: StayDetail | null;
     timeline: TimelineEntryDetail[];
     photos: PhotoDetail[];
   }>;
@@ -225,6 +241,31 @@ export function moveDailyPlan(
   return apiRequest<TripDetail>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/move`,
     { method: "POST", body: JSON.stringify({ starting_revision: startingRevision, target_date: targetDate }) },
+  );
+}
+
+export function writeStay(
+  tripId: string,
+  planId: string,
+  stay: StayWrite,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
+    { method: "PUT", body: JSON.stringify(stay) },
+  );
+}
+
+export function clearStay(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
   );
 }
 

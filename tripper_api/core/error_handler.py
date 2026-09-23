@@ -18,6 +18,8 @@ from tripper_api.trip.trip_errors import (
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
+    StayNotFoundError,
+    StayRevisionConflictError,
     TimelineCollectionRevisionConflictError,
     TimelineEntryNotFoundError,
     TimelineEntryRevisionConflictError,
@@ -174,6 +176,23 @@ def register_error_handlers(app: FastAPI) -> None:
             409,
             "daily_plan_revision_conflict",
             "This Daily plan changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(StayNotFoundError)
+    async def stay_not_found(request: Request, exc: StayNotFoundError) -> JSONResponse:
+        del request, exc
+        return error_response(404, "stay_not_found", "Stay not found")
+
+    @app.exception_handler(StayRevisionConflictError)
+    async def stay_revision_conflict(
+        request: Request, exc: StayRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            409,
+            "stay_revision_conflict",
+            "This Stay changed after editing started",
             latest_values=exc.latest_values,
         )
 

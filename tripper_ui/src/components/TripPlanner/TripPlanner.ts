@@ -2,6 +2,7 @@ import "./TripPlanner.css";
 import {
   ApiError,
   clearDailyPlan,
+  clearStay,
   createPhoto,
   createTimelineEntry,
   deletePhoto,
@@ -14,6 +15,7 @@ import {
   updateTripDetails,
   updateTimelineEntry,
   writeDailyPlan,
+  writeStay,
   type PhotoDetail,
   type TimelineEntryDetail,
   type TripDetail,
@@ -74,6 +76,20 @@ interface TimelineEntryDraft {
   title: string;
   description: string;
   location_name: string;
+}
+
+interface StayDraft {
+  id?: string;
+  plan_id: string;
+  starting_revision: number;
+  name: string;
+  address: string;
+  latitude: string;
+  longitude: string;
+  check_in: string;
+  check_out: string;
+  public_listing_url: string;
+  booking_platform: "" | "booking.com" | "airbnb";
 }
 
 interface PhotoDraft {
@@ -312,6 +328,7 @@ function renderEditorWorkspace(
     recovered?.key ?? tripDetailsDraftKey(accountId, trip.id, startingRevision);
   let draft = recovered?.draft ?? detailsDraft(trip);
   let timelineDraft = recovered || recoveredPlan ? undefined : recoveredTimeline;
+  let stayDraft: StayDraft | undefined;
   let photoDraft = recovered || recoveredPlan || recoveredTimeline ? undefined : recoveredPhoto;
   const recoveredCollectionPlan = trip.daily_plans.find(
     ({ id }) => id === (timelineDraft?.plan_id ?? photoDraft?.plan_id),
@@ -329,6 +346,7 @@ function renderEditorWorkspace(
     accountId, trip.id, planDraft.date, planDraft.starting_revision,
   );
   const clearDraft = (): void => {
+    if (stayDraft) return;
     sessionStorage.removeItem(
       photoDraft
         ? photoDraftKey(accountId, trip.id, photoDraft.plan_id, photoDraft.starting_revision)
@@ -345,6 +363,7 @@ function renderEditorWorkspace(
   };
   const persistDraft = (): void => {
     if (!dirty) return;
+    if (stayDraft) return;
     if (photoDraft) {
       clearPhotoDrafts(trip.id);
       sessionStorage.setItem(
@@ -439,6 +458,7 @@ function renderEditorWorkspace(
     draft = detailsDraft(trip);
     planDraft = dailyPlanDraft(trip, planDraft.date);
     timelineDraft = undefined;
+    stayDraft = undefined;
     photoDraft = undefined;
     dirty = false;
     refreshPreview();
@@ -487,6 +507,11 @@ function renderEditorWorkspace(
         photoPreview.src = photoDraft.url;
         photoPreview.alt = photoDraft.caption || "Unsaved photo preview";
         preview.appendChild(photoPreview);
+      }
+      if (stayDraft) {
+        const stayPreview = document.createElement("p");
+        stayPreview.textContent = `Stay · ${stayDraft.name || "No accommodation name"} · ${stayDraft.address}`;
+        preview.appendChild(stayPreview);
       }
     }
   };
@@ -749,6 +774,184 @@ function renderEditorWorkspace(
         showPlanConflict(trip);
       }
       if (current) {
+        const staySection = document.createElement("section");
+        staySection.className = "timeline-editor";
+        const stayHeader = document.createElement("div");
+        stayHeader.className = "timeline-editor__header";
+        const stayTitle = document.createElement("h3");
+        stayTitle.textContent = "Stay";
+        const editStay = document.createElement("button");
+        editStay.type = "button";
+        editStay.textContent = current.stay ? "Edit stay" : "Add stay";
+        editStay.hidden = stayDraft !== undefined || timelineDraft !== undefined || photoDraft !== undefined;
+        editStay.addEventListener("click", () => {
+          if (dirty) {
+            validation.textContent = "Save or Cancel your day changes before editing the stay.";
+            return;
+          }
+          stayDraft = {
+            ...(current.stay ? { id: current.stay.id } : {}),
+            plan_id: current.id,
+            starting_revision: current.stay?.revision ?? current.revision,
+            name: current.stay?.name ?? "",
+            address: current.stay?.address ?? "",
+            latitude: current.stay?.location ? String(current.stay.location.lat) : "",
+            longitude: current.stay?.location ? String(current.stay.location.lng) : "",
+            check_in: current.stay?.check_in?.slice(0, 5) ?? "",
+            check_out: current.stay?.check_out?.slice(0, 5) ?? "",
+            public_listing_url: current.stay?.public_listing_url ?? "",
+            booking_platform: current.stay?.booking_platform ?? "",
+          };
+          dirty = false;
+          renderEditor();
+        });
+        stayHeader.append(stayTitle, editStay);
+        staySection.appendChild(stayHeader);
+
+        if (stayDraft?.plan_id === current.id) {
+          const activeStayDraft = stayDraft;
+          const stayForm = document.createElement("form");
+          stayForm.className = "timeline-editor__form";
+          stayForm.noValidate = true;
+          const stayError = document.createElement("p");
+          stayError.className = "trip-details-form__field-error";
+          stayError.setAttribute("role", "alert");
+          const stayField = (
+            labelText: string,
+            value: string,
+            onInput: (value: string) => void,
+            type = "text",
+          ): HTMLLabelElement => {
+            const label = document.createElement("label");
+            label.textContent = labelText;
+            const input = document.createElement("input");
+            input.type = type;
+            input.value = value;
+            input.addEventListener("input", () => {
+              onInput(input.value);
+              markDirty();
+            });
+            label.appendChild(input);
+            return label;
+          };
+          const nameField = stayField("Accommodation name", activeStayDraft.name, (value) => (activeStayDraft.name = value));
+          const addressField = stayField("Address", activeStayDraft.address, (value) => (activeStayDraft.address = value));
+          const latitudeField = stayField("Latitude", activeStayDraft.latitude, (value) => (activeStayDraft.latitude = value), "number");
+          const longitudeField = stayField("Longitude", activeStayDraft.longitude, (value) => (activeStayDraft.longitude = value), "number");
+          const checkInField = stayField("Check-in time", activeStayDraft.check_in, (value) => (activeStayDraft.check_in = value), "time");
+          const checkOutField = stayField("Check-out time", activeStayDraft.check_out, (value) => (activeStayDraft.check_out = value), "time");
+          const listingField = stayField("Public listing HTTPS URL", activeStayDraft.public_listing_url, (value) => (activeStayDraft.public_listing_url = value), "url");
+          const platformLabel = document.createElement("label");
+          platformLabel.textContent = "Booking platform";
+          const platform = document.createElement("select");
+          for (const [value, label] of [["", "None"], ["booking.com", "Booking.com"], ["airbnb", "Airbnb"]] as const) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            platform.appendChild(option);
+          }
+          platform.value = activeStayDraft.booking_platform;
+          platform.addEventListener("change", () => {
+            activeStayDraft.booking_platform = platform.value as StayDraft["booking_platform"];
+            markDirty();
+          });
+          platformLabel.appendChild(platform);
+          const stayActions = document.createElement("div");
+          stayActions.className = "timeline-editor__form-actions";
+          const cancelStay = document.createElement("button");
+          cancelStay.type = "button";
+          cancelStay.textContent = "Cancel stay";
+          cancelStay.addEventListener("click", () => {
+            stayDraft = undefined;
+            dirty = false;
+            refreshPreview();
+            renderEditor();
+          });
+          const saveStay = document.createElement("button");
+          saveStay.type = "submit";
+          saveStay.textContent = "Save stay";
+          stayActions.append(cancelStay, saveStay);
+          stayForm.append(
+            stayError,
+            nameField,
+            addressField,
+            latitudeField,
+            longitudeField,
+            checkInField,
+            checkOutField,
+            platformLabel,
+            listingField,
+            stayActions,
+          );
+          const saveStayForm = async (): Promise<boolean> => {
+            stayError.textContent = "";
+            if (!activeStayDraft.name.trim()) {
+              stayError.textContent = "Enter an accommodation name.";
+              nameField.querySelector("input")?.focus();
+              return false;
+            }
+            const hasLatitude = activeStayDraft.latitude !== "";
+            const hasLongitude = activeStayDraft.longitude !== "";
+            if (hasLatitude !== hasLongitude) {
+              stayError.textContent = "Enter both latitude and longitude, or leave both blank.";
+              return false;
+            }
+            saveStay.disabled = true;
+            try {
+              trip = await writeStay(trip.id, current.id, {
+                ...(activeStayDraft.id ? { id: activeStayDraft.id } : {}),
+                starting_revision: activeStayDraft.starting_revision,
+                name: activeStayDraft.name,
+                address: activeStayDraft.address,
+                location: hasLatitude
+                  ? { lat: Number(activeStayDraft.latitude), lng: Number(activeStayDraft.longitude) }
+                  : null,
+                check_in: activeStayDraft.check_in || null,
+                check_out: activeStayDraft.check_out || null,
+                public_listing_url: activeStayDraft.public_listing_url || null,
+                booking_platform: activeStayDraft.booking_platform || null,
+              });
+              stayDraft = undefined;
+              dirty = false;
+              refreshPreview();
+              renderEditor();
+              return true;
+            } catch (error) {
+              if (error instanceof ApiError && error.latest_values) trip = error.latest_values;
+              stayError.textContent = error instanceof Error ? `${error.message} Your values are still here.` : "Could not save the stay.";
+              return false;
+            } finally {
+              saveStay.disabled = false;
+            }
+          };
+          saveCurrentForm = saveStayForm;
+          stayForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            void saveStayForm();
+          });
+          staySection.appendChild(stayForm);
+        } else if (current.stay) {
+          const summary = document.createElement("p");
+          summary.textContent = [current.stay.name, current.stay.address].filter(Boolean).join(" · ");
+          const removeStay = document.createElement("button");
+          removeStay.type = "button";
+          removeStay.textContent = "Clear stay";
+          removeStay.addEventListener("click", () => {
+            void clearStay(trip.id, current.id, current.stay!.revision)
+              .then((updated) => {
+                trip = updated;
+                refreshPreview();
+                renderEditor();
+              })
+              .catch((error: unknown) => {
+                if (error instanceof ApiError && error.latest_values) trip = error.latest_values;
+                validation.textContent = error instanceof Error ? error.message : "Could not clear the stay.";
+              });
+          });
+          staySection.append(summary, removeStay);
+        }
+        editor.appendChild(staySection);
+
         const timeline = document.createElement("section");
         timeline.className = "timeline-editor";
         const timelineHeader = document.createElement("div");
@@ -758,7 +961,7 @@ function renderEditorWorkspace(
         const addActivity = document.createElement("button");
         addActivity.type = "button";
         addActivity.textContent = "Add activity";
-        addActivity.hidden = timelineDraft !== undefined || photoDraft !== undefined;
+        addActivity.hidden = timelineDraft !== undefined || stayDraft !== undefined || photoDraft !== undefined;
         addActivity.addEventListener("click", () => {
           if (dirty) {
             validation.textContent = "Save or Cancel your day changes before editing activities.";
@@ -1143,10 +1346,10 @@ function renderEditorWorkspace(
           item.append(activitySummary, activityControls);
           list.appendChild(item);
         });
-        list.hidden = timelineDraft !== undefined || photoDraft !== undefined;
+        list.hidden = timelineDraft !== undefined || stayDraft !== undefined || photoDraft !== undefined;
         timeline.appendChild(list);
         editor.appendChild(timeline);
-        form.hidden = timelineDraft !== undefined || photoDraft !== undefined;
+        form.hidden = timelineDraft !== undefined || stayDraft !== undefined || photoDraft !== undefined;
       }
       if (current) {
         const currentPhotoPlan = current;
@@ -1159,7 +1362,7 @@ function renderEditorWorkspace(
         const addPhoto = document.createElement("button");
         addPhoto.type = "button";
         addPhoto.textContent = "Add photo";
-        addPhoto.hidden = photoDraft !== undefined || timelineDraft !== undefined;
+        addPhoto.hidden = photoDraft !== undefined || timelineDraft !== undefined || stayDraft !== undefined;
         addPhoto.addEventListener("click", () => {
           if (dirty) {
             validation.textContent = "Save or Cancel your day changes before editing photos.";
@@ -1539,11 +1742,11 @@ function renderEditorWorkspace(
           item.append(image, caption, controls);
           photoList.appendChild(item);
         });
-        photoList.hidden = photoDraft !== undefined || timelineDraft !== undefined;
+        photoList.hidden = photoDraft !== undefined || timelineDraft !== undefined || stayDraft !== undefined;
         photos.appendChild(photoList);
         editor.appendChild(photos);
       }
-      if (current && !timelineDraft && !photoDraft) {
+      if (current && !timelineDraft && !stayDraft && !photoDraft) {
         const move = document.createElement("label");
         move.textContent = "Move complete plan to";
         const target = document.createElement("select");
@@ -1610,6 +1813,7 @@ function renderEditorWorkspace(
       dayStatus.textContent = plan?.title || "Not planned yet";
       if (planDraft.date !== calendarDate.date) {
         planDraft = dailyPlanDraft(trip, calendarDate.date);
+        stayDraft = undefined;
         photoDraft = undefined;
         dirty = false;
       }
