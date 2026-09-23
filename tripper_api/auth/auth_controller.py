@@ -65,6 +65,7 @@ async def google_sign_in(
     )
     return SessionResponse(
         account=AccountResponse(
+            id=created.account.id,
             email=created.account.email,
             display_name=created.account.display_name,
         )
@@ -76,7 +77,11 @@ async def current_session(
     user: Annotated[AuthenticatedUser, Depends(require_current_user)],
 ) -> SessionResponse:
     return SessionResponse(
-        account=AccountResponse(email=user.email, display_name=user.display_name)
+        account=AccountResponse(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+        )
     )
 
 

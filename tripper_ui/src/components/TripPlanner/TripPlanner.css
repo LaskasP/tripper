@@ -327,6 +327,53 @@
   color: #97d7a4;
 }
 
+.trip-details-form__conflict,
+.trip-details-form__sign-in {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 190, 92, 0.55);
+  border-radius: var(--radius-md);
+  background: rgba(99, 65, 14, 0.28);
+}
+
+.trip-details-form__conflict h2,
+.trip-details-form__conflict p {
+  margin: 0;
+}
+
+.trip-details-form__conflict-actions,
+.trip-navigation-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.trip-navigation-dialog {
+  width: min(30rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: #fff;
+  background: #17171d;
+}
+
+.trip-navigation-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.trip-navigation-dialog button {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  color: #fff;
+  background: var(--glass-bg);
+  font: inherit;
+  font-weight: 700;
+}
+
 .trip-planner--read-only {
   display: grid;
   align-content: center;

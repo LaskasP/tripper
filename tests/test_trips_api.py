@@ -360,6 +360,7 @@ async def test_creator_updates_trip_details_and_ordered_destinations(
         updated = await client.put(
             f"/api/trips/{created.json()['id']}/details",
             json={
+                "starting_revision": before.json()["revision"],
                 "name": "Aegean summer",
                 "short_name": "Aegean",
                 "description": "Athens first, then the islands.",
@@ -420,6 +421,7 @@ async def test_contributor_can_edit_but_traveller_cannot(
             role="traveller",
         )
         request = {
+            "starting_revision": original.json()["revision"],
             "name": "Contributor update",
             "short_name": "Greek Islands",
             "description": "Updated together.",
@@ -476,6 +478,7 @@ async def test_trip_details_reject_invalid_metadata(
         created = await client.post("/api/trips", json=TRIP)
         detail = await client.get(f"/api/trips/{created.json()['id']}")
         request: dict[str, object] = {
+            "starting_revision": detail.json()["revision"],
             "name": detail.json()["name"],
             "short_name": detail.json()["short_name"],
             "description": detail.json()["description"],
@@ -517,6 +520,7 @@ async def test_date_range_cannot_exclude_a_populated_daily_plan(
         rejected = await client.put(
             f"/api/trips/{trip_id}/details",
             json={
+                "starting_revision": detail.json()["revision"],
                 "name": detail.json()["name"],
                 "short_name": detail.json()["short_name"],
                 "description": detail.json()["description"],
@@ -555,6 +559,7 @@ async def test_destination_used_by_a_timeline_entry_cannot_be_removed(
         with_athens = await client.put(
             f"/api/trips/{trip_id}/details",
             json={
+                "starting_revision": detail.json()["revision"],
                 "name": detail.json()["name"],
                 "short_name": detail.json()["short_name"],
                 "description": detail.json()["description"],
@@ -586,6 +591,7 @@ async def test_destination_used_by_a_timeline_entry_cannot_be_removed(
         rejected = await client.put(
             f"/api/trips/{trip_id}/details",
             json={
+                "starting_revision": with_athens.json()["revision"],
                 "name": detail.json()["name"],
                 "short_name": detail.json()["short_name"],
                 "description": detail.json()["description"],
@@ -606,7 +612,7 @@ async def test_destination_used_by_a_timeline_entry_cannot_be_removed(
     assert rejected.json()["error"]["code"] == "trip_destination_in_use"
 
 
-async def test_concurrent_destination_reorders_remain_atomic(
+async def test_stale_trip_details_update_is_rejected_with_latest_values(
     database_settings: Settings,
 ) -> None:
     async for setup_client, _ in app_client(database_settings, {"id": ALEX_ID}):
@@ -617,6 +623,7 @@ async def test_concurrent_destination_reorders_remain_atomic(
         with_athens = await setup_client.put(
             f"/api/trips/{trip_id}/details",
             json={
+                "starting_revision": detail.json()["revision"],
                 "name": detail.json()["name"],
                 "short_name": detail.json()["short_name"],
                 "description": detail.json()["description"],
@@ -643,6 +650,7 @@ async def test_concurrent_destination_reorders_remain_atomic(
         for destination in with_athens.json()["destinations"]
     ]
     base_request = {
+        "starting_revision": with_athens.json()["revision"],
         "name": detail.json()["name"],
         "short_name": detail.json()["short_name"],
         "description": detail.json()["description"],
@@ -673,9 +681,12 @@ async def test_concurrent_destination_reorders_remain_atomic(
         )
         final = await first.get(f"/api/trips/{trip_id}")
 
-    assert [response.status_code for response in responses] == [200, 200]
-    final_names = [item["name"] for item in final.json()["destinations"]]
-    assert final_names in [["Cyclades", "Athens"], ["Athens", "Cyclades"]]
+    assert sorted(response.status_code for response in responses) == [200, 409]
+    saved = next(response for response in responses if response.status_code == 200)
+    rejected = next(response for response in responses if response.status_code == 409)
+    assert rejected.json()["error"]["code"] == "trip_revision_conflict"
+    assert rejected.json()["error"]["latest_values"] == saved.json()
+    assert final.json() == saved.json()
 
 
 async def test_every_participant_role_reads_the_draft_and_current_roster(

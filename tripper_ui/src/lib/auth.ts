@@ -66,6 +66,9 @@ export async function renderGoogleSignIn(
     size: "large",
     text: "signin_with",
   });
+  container.querySelectorAll("button").forEach((button) => {
+    button.type = "button";
+  });
 }
 
 export async function signOut(): Promise<void> {
@@ -76,9 +79,25 @@ export async function signOut(): Promise<void> {
     headers: csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {},
   });
   if (!response.ok) throw new Error("Sign out failed.");
+  clearTripDrafts();
+}
+
+export interface CurrentAccount {
+  id: string;
+  email: string;
+  display_name: string;
+}
+
+export async function loadCurrentAccount(): Promise<CurrentAccount> {
+  const response = await fetch("/api/auth/session", { credentials: "include" });
+  if (!response.ok) throw new Error("Sign in to manage your trips.");
+  const session = (await response.json()) as { account: CurrentAccount };
+  prepareTripDraftsForAccount(session.account.id);
+  return session.account;
 }
 
 export function sessionCsrfToken(): string | undefined {
   const value = cookie("tripper_csrf");
   return value ? decodeURIComponent(value) : undefined;
 }
+import { clearTripDrafts, prepareTripDraftsForAccount } from "./drafts";

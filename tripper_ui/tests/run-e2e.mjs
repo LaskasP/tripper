@@ -38,7 +38,7 @@ const api = spawn(
 );
 
 async function waitForApi() {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
     if (api.exitCode !== null) {
       throw new Error(`The end-to-end API exited with code ${api.exitCode}.`);
     }

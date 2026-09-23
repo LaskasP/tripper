@@ -16,6 +16,7 @@ from tripper_api.trip.trip_errors import (
     TripDestinationMismatchError,
     TripEditForbiddenError,
     TripNotFoundError,
+    TripRevisionConflictError,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,18 @@ def register_error_handlers(app: FastAPI) -> None:
             "Move or clear plans using this destination first",
         )
 
+    @app.exception_handler(TripRevisionConflictError)
+    async def trip_revision_conflict(
+        request: Request, exc: TripRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            status.HTTP_409_CONFLICT,
+            "trip_revision_conflict",
+            "This Trip changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         del request
@@ -130,8 +143,13 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 
 
-def error_response(status_code: int, code: str, message: str) -> JSONResponse:
+def error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    **details: object,
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message}},
+        content={"error": {"code": code, "message": message, **details}},
     )

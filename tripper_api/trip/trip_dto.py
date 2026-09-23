@@ -52,6 +52,7 @@ class DestinationDetailsInput(BaseModel):
 class TripDetailsUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    starting_revision: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=200)
     short_name: str = Field(default="", max_length=80)
     description: str = ""

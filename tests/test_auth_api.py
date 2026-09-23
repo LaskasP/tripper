@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from uuid import UUID
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -79,7 +80,9 @@ async def test_google_sign_in_establishes_secure_server_side_session(
         current = await client.get("/api/auth/session")
 
     assert response.status_code == 200
-    assert response.json() == {
+    response_body = response.json()
+    UUID(response_body["account"].pop("id"))
+    assert response_body == {
         "account": {
             "display_name": "Alex Example",
             "email": "alex@example.com",

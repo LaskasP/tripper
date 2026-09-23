@@ -77,6 +77,7 @@ export interface TripDetail {
 }
 
 export interface TripDetailsUpdate {
+  starting_revision: number;
   name: string;
   short_name: string;
   description: string;
@@ -93,15 +94,18 @@ export interface TripDetailsUpdate {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly latest_values?: TripDetail;
 
   constructor(
     status: number,
     code: string,
     message: string,
+    latestValues?: TripDetail,
   ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.latest_values = latestValues;
   }
 }
 
@@ -119,7 +123,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
-      error?: { code?: string; message?: string };
+      error?: { code?: string; message?: string; latest_values?: TripDetail };
     } | null;
     throw new ApiError(
       response.status,
@@ -127,6 +131,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
       response.status === 401
         ? "Sign in to manage your trips."
         : (body?.error?.message ?? "Something went wrong. Please try again."),
+      body?.error?.latest_values,
     );
   }
 

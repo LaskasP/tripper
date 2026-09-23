@@ -1,5 +1,32 @@
 import { expect, test } from '@playwright/test';
 
+function editableTrip() {
+  return {
+    id: '223eb014-ff17-51e7-9507-b956164ff7a4',
+    revision: 1,
+    role: 'creator',
+    name: 'Island draft',
+    destination: 'Cyclades',
+    short_name: 'Islands',
+    description: '',
+    timezone: 'Europe/Athens',
+    location: null,
+    start_date: '2027-06-10',
+    end_date: '2027-06-17',
+    destinations: [{
+      id: '7468f63b-f89a-4c08-8cb1-d54fdd2b7389',
+      name: 'Cyclades',
+      timezone: 'Europe/Athens',
+      location: null,
+      position: 0,
+      revision: 1,
+    }],
+    calendar: [],
+    daily_plans: [],
+    roster: [{ display_name: 'Editor', role: 'creator' }],
+  };
+}
+
 test('user creates a trip and finds it in My Trips as creator', async ({ page }) => {
   await page.addInitScript(() => {
     let googleCallback: (response: { credential: string }) => void;
@@ -173,6 +200,15 @@ test('creator edits Trip details and ordered destinations in the planner', async
   await expect(page.getByText('Unsaved preview')).toBeVisible();
   await expect(page.getByTestId('trip-preview')).toContainText('Aegean summer');
   await expect(page.getByTestId('trip-preview')).toContainText('Athens → Cyclades');
+  await page.reload();
+  await expect(page.getByLabel('Trip name')).toHaveValue('Aegean summer');
+  await expect(page.getByTestId('trip-preview')).toContainText('Athens → Cyclades');
+  await page.getByRole('tab', { name: 'Plan' }).click();
+  await expect(page.getByRole('dialog', { name: 'Unsaved changes' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Discard', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(page.getByLabel('Trip name')).toHaveValue('Aegean summer');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Changes saved')).toBeVisible();
 
@@ -182,7 +218,158 @@ test('creator edits Trip details and ordered destinations in the planner', async
   await expect(updatedTrip).toContainText('2027-06-08 – 2027-06-19');
 });
 
+test('editor sees latest values and deliberately reapplies after a revision conflict', async ({ page }) => {
+  const trip = editableTrip();
+  await page.route('**/api/auth/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
+  }));
+  await page.route('**/api/trips/*/details', async (route) => {
+    const request = route.request().postDataJSON();
+    if (request.starting_revision === 1) {
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 'trip_revision_conflict',
+            message: 'This Trip changed after editing started',
+            latest_values: { ...trip, revision: 2, name: 'Saved elsewhere' },
+          },
+        }),
+      });
+      return;
+    }
+    expect(request.starting_revision).toBe(2);
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ ...trip, ...request, revision: 3 }),
+    });
+  });
+  await page.route('**/api/trips/*', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(trip),
+  }));
+
+  await page.goto(`/tripper/trips/${trip.id}/edit`);
+  await page.getByRole('tab', { name: 'Trip details' }).click();
+  await page.getByLabel('Trip name').fill('My retained edit');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Latest saved values' })).toBeVisible();
+  await expect(page.getByText('Saved elsewhere')).toBeVisible();
+  await expect(page.getByLabel('Trip name')).toHaveValue('My retained edit');
+  await page.getByRole('button', { name: 'Reapply my changes' }).click();
+  await page.getByRole('button', { name: 'Retry save' }).click();
+  await expect(page.getByText('Changes saved')).toBeVisible();
+});
+
+test('permission loss keeps values copyable but clears their recoverable draft', async ({ page }) => {
+  const trip = editableTrip();
+  let permissionLost = false;
+  await page.route('**/api/auth/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
+  }));
+  await page.route('**/api/trips/*/details', async (route) => {
+    permissionLost = true;
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: { code: 'trip_edit_forbidden', message: 'Trip editing is not permitted' },
+      }),
+    });
+  });
+  await page.route('**/api/trips/*', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(permissionLost ? { ...trip, role: 'traveller' } : trip),
+  }));
+
+  await page.goto(`/tripper/trips/${trip.id}/edit`);
+  await page.getByRole('tab', { name: 'Trip details' }).click();
+  await page.getByLabel('Trip name').fill('Copy this work');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('available to copy');
+  await expect(page.getByLabel('Trip name')).toHaveValue('Copy this work');
+  await expect(page.getByLabel('Trip name')).toHaveAttribute('readonly', '');
+  await page.reload();
+  await expect(page.getByText('Traveller access is read-only.')).toBeVisible();
+  await expect(page.getByText('Copy this work')).toHaveCount(0);
+});
+
+test('expired Session can be restored without losing active values', async ({ page }) => {
+  const trip = editableTrip();
+  let saveAttempts = 0;
+  await page.addInitScript(() => {
+    let googleCallback: (response: { credential: string }) => void;
+    window.google = { accounts: { id: {
+      initialize(options) { googleCallback = options.callback; },
+      renderButton(element) {
+        const button = document.createElement('button');
+        button.textContent = 'Sign in with Google';
+        button.addEventListener('click', () => googleCallback({ credential: 'restored' }));
+        element.appendChild(button);
+      },
+    } } };
+  });
+  await page.route('**/api/auth/google/config', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ client_id: 'test-client-id' }),
+  }));
+  await page.route('**/api/auth/google', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
+  }));
+  await page.route('**/api/auth/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ account: { id: 'account-one', email: 'editor@example.com', display_name: 'Editor' } }),
+  }));
+  await page.route('**/api/trips/*/details', async (route) => {
+    saveAttempts += 1;
+    if (saveAttempts === 1) {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'authentication_required', message: 'Authentication required' } }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ ...trip, ...route.request().postDataJSON(), revision: 2 }),
+    });
+  });
+  await page.route('**/api/trips/*', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(trip),
+  }));
+
+  await page.goto(`/tripper/trips/${trip.id}/edit`);
+  await page.getByRole('tab', { name: 'Trip details' }).click();
+  await page.getByLabel('Trip name').fill('Survives sign-in');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByLabel('Trip name')).toHaveValue('Survives sign-in');
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await expect(page.getByRole('alert')).toContainText('Signed in again');
+  await page.getByRole('button', { name: 'Retry save' }).click();
+  await expect(page.getByText('Changes saved')).toBeVisible();
+});
+
 test('traveller opening an edit URL receives no editing controls', async ({ page }) => {
+  await page.route('**/api/auth/session', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        account: {
+          id: 'account-one',
+          email: 'reader@example.com',
+          display_name: 'Reader',
+        },
+      }),
+    });
+  });
   await page.route('**/api/trips/read-only', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
