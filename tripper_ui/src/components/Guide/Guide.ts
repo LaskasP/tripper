@@ -8,7 +8,13 @@ import { fetchWeather } from "../../lib/weather";
 import type { Day } from "../../types";
 
 function guideDays(trip: TripDetail): Day[] {
-  return trip.daily_plans.map((plan) => ({
+  return trip.calendar.map(({ date, day_number }) => {
+    const plan = trip.daily_plans.find((item) => item.date === date);
+    if (!plan) return {
+      date, day_number, title: "Not planned yet", summary: "",
+      background_image: "", timeline: [], photos: [],
+    };
+    return ({
     date: plan.date,
     day_number: plan.day_number,
     title: plan.title,
@@ -39,14 +45,12 @@ function guideDays(trip: TripDetail): Day[] {
       ...(entry.location_name ? { location_name: entry.location_name } : {}),
     })),
     photos: plan.photos,
-  }));
+    });
+  });
 }
 
 export async function renderGuide(app: HTMLElement, trip: TripDetail): Promise<void> {
   const days = guideDays(trip);
-  if (days.length === 0) {
-    throw new Error("This trip has no planned days yet.");
-  }
   document.documentElement.style.scrollSnapType = "y mandatory";
   document.title = trip.short_name || trip.name;
   const metaDescription = document.querySelector('meta[name="description"]');

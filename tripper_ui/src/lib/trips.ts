@@ -24,6 +24,7 @@ export interface NewTrip {
 export interface TripDetail {
   id: string;
   revision: number;
+  content_revision: number;
   role: TripRole;
   name: string;
   destination: string;
@@ -47,6 +48,9 @@ export interface TripDetail {
     is_planned: boolean;
   }>;
   daily_plans: Array<{
+    id: string;
+    destination_id: string;
+    revision: number;
     date: string;
     day_number: number;
     title: string;
@@ -89,6 +93,15 @@ export interface TripDetailsUpdate {
     timezone: string;
     location: { lat: number; lng: number } | null;
   }>;
+}
+
+export interface DailyPlanWrite {
+  id?: string;
+  starting_revision: number;
+  destination_id: string;
+  title: string;
+  summary: string;
+  background_image: string;
 }
 
 export class ApiError extends Error {
@@ -160,6 +173,33 @@ export function updateTripDetails(
   return apiRequest<TripDetail>(
     `/api/trips/${encodeURIComponent(tripId)}/details`,
     { method: "PUT", body: JSON.stringify(details) },
+  );
+}
+
+export function writeDailyPlan(
+  tripId: string, date: string, plan: DailyPlanWrite,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(date)}`,
+    { method: "PUT", body: JSON.stringify(plan) },
+  );
+}
+
+export function clearDailyPlan(
+  tripId: string, date: string, startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(date)}`,
+    { method: "DELETE", body: JSON.stringify({ starting_revision: startingRevision }) },
+  );
+}
+
+export function moveDailyPlan(
+  tripId: string, planId: string, targetDate: string, startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/move`,
+    { method: "POST", body: JSON.stringify({ starting_revision: startingRevision, target_date: targetDate }) },
   );
 }
 import { sessionCsrfToken } from "./auth";

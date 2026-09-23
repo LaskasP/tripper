@@ -11,6 +11,10 @@ from tripper_api.auth.auth_errors import (
     InvalidGoogleCredentialError,
 )
 from tripper_api.trip.trip_errors import (
+    DailyPlanNotFoundError,
+    DailyPlanOccupiedError,
+    DailyPlanOutOfRangeError,
+    DailyPlanRevisionConflictError,
     TripDateRangeExcludesPlansError,
     TripDestinationInUseError,
     TripDestinationMismatchError,
@@ -126,6 +130,43 @@ def register_error_handlers(app: FastAPI) -> None:
             status.HTTP_409_CONFLICT,
             "trip_revision_conflict",
             "This Trip changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(DailyPlanNotFoundError)
+    async def daily_plan_not_found(
+        request: Request, exc: DailyPlanNotFoundError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(404, "daily_plan_not_found", "Daily plan not found")
+
+    @app.exception_handler(DailyPlanOccupiedError)
+    async def daily_plan_occupied(
+        request: Request, exc: DailyPlanOccupiedError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(
+            409, "daily_plan_occupied", "Target date already has a plan"
+        )
+
+    @app.exception_handler(DailyPlanOutOfRangeError)
+    async def daily_plan_out_of_range(
+        request: Request, exc: DailyPlanOutOfRangeError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(
+            422, "daily_plan_out_of_range", "Date is outside the Trip"
+        )
+
+    @app.exception_handler(DailyPlanRevisionConflictError)
+    async def daily_plan_revision_conflict(
+        request: Request, exc: DailyPlanRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            409,
+            "daily_plan_revision_conflict",
+            "This Daily plan changed after editing started",
             latest_values=exc.latest_values,
         )
 

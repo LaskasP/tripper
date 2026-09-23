@@ -1,13 +1,19 @@
 import "./TripPlanner.css";
 import {
   ApiError,
+  clearDailyPlan,
   loadParticipantTrip,
+  moveDailyPlan,
   updateTripDetails,
+  writeDailyPlan,
   type TripDetail,
   type TripDetailsUpdate,
 } from "../../lib/trips";
 import { loadCurrentAccount, renderGoogleSignIn } from "../../lib/auth";
 import {
+  clearDailyPlanDrafts,
+  dailyPlanDraftKey,
+  dailyPlanDraftPrefix,
   clearTripDetailsDrafts,
   tripDetailsDraftKey,
   tripDetailsDraftPrefix,
@@ -30,6 +36,49 @@ interface TripDetailsDraft {
   start_date: string;
   end_date: string;
   destinations: DestinationDraft[];
+}
+
+interface DailyPlanDraft {
+  id?: string;
+  date: string;
+  destination_id: string;
+  title: string;
+  summary: string;
+  background_image: string;
+  starting_revision: number;
+}
+
+function dailyPlanDraft(trip: TripDetail, date: string): DailyPlanDraft {
+  const plan = trip.daily_plans.find((item) => item.date === date);
+  return {
+    ...(plan ? { id: plan.id } : {}),
+    date,
+    destination_id: plan?.destination_id ?? trip.destinations[0].id,
+    title: plan?.title ?? "",
+    summary: plan?.summary ?? "",
+    background_image: plan?.background_image ?? "",
+    starting_revision: plan?.revision ?? trip.content_revision,
+  };
+}
+
+function recoveredDailyPlanDraft(
+  accountId: string, trip: TripDetail,
+): DailyPlanDraft | undefined {
+  const prefix = dailyPlanDraftPrefix(accountId, trip.id);
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    try {
+      const value = JSON.parse(sessionStorage.getItem(key) || "") as DailyPlanDraft;
+      if (trip.calendar.some(({ date }) => date === value.date) &&
+          typeof value.title === "string" && typeof value.summary === "string" &&
+          typeof value.background_image === "string" &&
+          typeof value.starting_revision === "number") return value;
+    } catch {
+      sessionStorage.removeItem(key);
+    }
+  }
+  return undefined;
 }
 
 function formatDateLabel(value: string): string {
@@ -166,17 +215,27 @@ function renderEditorWorkspace(
 ): void {
   let trip = initialTrip;
   const recovered = recoveredDetailsDraft(accountId, trip.id, trip.revision);
+  const recoveredPlan = recoveredDailyPlanDraft(accountId, trip);
+  if (recovered && recoveredPlan) clearDailyPlanDrafts(trip.id);
   let startingRevision = recovered?.starting_revision ?? trip.revision;
   let draftStorageKey =
     recovered?.key ?? tripDetailsDraftKey(accountId, trip.id, startingRevision);
   let draft = recovered?.draft ?? detailsDraft(trip);
-  let dirty = recovered !== undefined;
+  let planDraft = recoveredPlan ?? dailyPlanDraft(trip, trip.calendar[0]?.date ?? trip.start_date);
+  let dirty = recovered !== undefined || recoveredPlan !== undefined;
   let activeSection: WorkspaceSection = recovered ? "details" : "plan";
   let saveCurrentForm: (() => Promise<boolean>) | undefined;
 
-  const clearDraft = (): void => sessionStorage.removeItem(draftStorageKey);
+  const planStorageKey = (): string => dailyPlanDraftKey(
+    accountId, trip.id, planDraft.date, planDraft.starting_revision,
+  );
+  const clearDraft = (): void => sessionStorage.removeItem(
+    activeSection === "plan" ? planStorageKey() : draftStorageKey,
+  );
   const persistDraft = (): void => {
-    if (dirty) sessionStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    if (!dirty) return;
+    if (activeSection === "plan") sessionStorage.setItem(planStorageKey(), JSON.stringify(planDraft));
+    else sessionStorage.setItem(draftStorageKey, JSON.stringify(draft));
   };
 
   const page = document.createElement("main");
@@ -249,6 +308,7 @@ function renderEditorWorkspace(
   discardAndLeave.addEventListener("click", () => {
     clearDraft();
     draft = detailsDraft(trip);
+    planDraft = dailyPlanDraft(trip, planDraft.date);
     dirty = false;
     refreshPreview();
     navigationDialog.close();
@@ -282,6 +342,11 @@ function renderEditorWorkspace(
     description.className = "trip-workspace__preview-description";
     description.textContent = draft.description || "No description yet.";
     preview.append(label, title, route, dates, description);
+    if (activeSection === "plan") {
+      const dayPreview = document.createElement("p");
+      dayPreview.textContent = `${formatDateLabel(planDraft.date)} · ${planDraft.title || "No day title"} · ${planDraft.summary}`;
+      preview.appendChild(dayPreview);
+    }
   };
 
   const markDirty = (): void => {
@@ -303,6 +368,7 @@ function renderEditorWorkspace(
   };
 
   const showPlan = (): void => {
+    saveCurrentForm = undefined;
     const panel = document.createElement("div");
     panel.className = "trip-workspace__panel";
     const title = document.createElement("h1");
@@ -315,6 +381,287 @@ function renderEditorWorkspace(
     const dayTitle = document.createElement("h2");
     const dayStatus = document.createElement("p");
     dayStatus.className = "trip-planner__unplanned";
+    const editor = document.createElement("div");
+    editor.className = "trip-details-form";
+    const renderEditor = (): void => {
+      editor.replaceChildren();
+      const current = trip.daily_plans.find(({ date }) => date === planDraft.date);
+      const form = document.createElement("form");
+      form.className = "trip-details-form";
+      form.noValidate = true;
+      const heading = document.createElement("h3");
+      heading.textContent = current ? "Edit day" : "Create day";
+      const validation = document.createElement("p");
+      validation.setAttribute("role", "alert");
+      const makeField = (labelText: string, value: string, update: (value: string) => void): HTMLLabelElement => {
+        const label = document.createElement("label");
+        label.textContent = labelText;
+        const input = document.createElement("input");
+        input.value = value;
+        input.addEventListener("input", () => { update(input.value); markDirty(); });
+        label.appendChild(input);
+        return label;
+      };
+      const destination = document.createElement("label");
+      destination.textContent = "Primary destination";
+      const destinationSelect = document.createElement("select");
+      for (const item of trip.destinations) {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        destinationSelect.appendChild(option);
+      }
+      destinationSelect.value = planDraft.destination_id;
+      destinationSelect.addEventListener("change", () => {
+        planDraft.destination_id = destinationSelect.value;
+        markDirty();
+      });
+      destination.appendChild(destinationSelect);
+      const summary = document.createElement("label");
+      summary.textContent = "Day summary";
+      const summaryInput = document.createElement("textarea");
+      summaryInput.value = planDraft.summary;
+      summaryInput.rows = 4;
+      summaryInput.addEventListener("input", () => {
+        planDraft.summary = summaryInput.value;
+        markDirty();
+      });
+      summary.appendChild(summaryInput);
+      const background = makeField("Background image HTTPS URL", planDraft.background_image,
+        (value) => (planDraft.background_image = value));
+      const imagePreview = document.createElement("img");
+      imagePreview.className = "trip-plan__image-preview";
+      imagePreview.alt = "Background preview";
+      const showImage = (): void => {
+        imagePreview.hidden = !planDraft.background_image.startsWith("https://");
+        if (!imagePreview.hidden) imagePreview.src = planDraft.background_image;
+      };
+      background.querySelector("input")?.addEventListener("input", showImage);
+      imagePreview.addEventListener("error", () => { validation.textContent = "Background image could not be loaded."; });
+      showImage();
+      const actions = document.createElement("div");
+      actions.className = "trip-details-form__actions";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => {
+        clearDraft(); dirty = false;
+        planDraft = dailyPlanDraft(trip, planDraft.date);
+        refreshPreview(); renderEditor();
+      });
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.textContent = "Save plan";
+      let conflictPending = false;
+      actions.append(cancel, save);
+      form.append(heading, validation, destination,
+        makeField("Day title", planDraft.title, (value) => (planDraft.title = value)),
+        summary, background, imagePreview, actions);
+      const showPlanConflict = (
+        latestTrip: TripDetail,
+        retryOperation?: { label: string; after_date: string; run: (revision: number) => Promise<TripDetail> },
+      ): void => {
+        trip = latestTrip;
+        conflictPending = true;
+        save.disabled = true;
+        form.querySelector(".trip-details-form__conflict")?.remove();
+        const latest = trip.daily_plans.find(({ date }) => date === planDraft.date);
+        const conflict = document.createElement("section");
+        conflict.className = "trip-details-form__conflict";
+        const heading = document.createElement("h4");
+        heading.textContent = "Latest saved values";
+        const fields = document.createElement("dl");
+        for (const [label, value] of [
+          ["Day title", latest?.title || "Not planned yet"],
+          ["Day summary", latest?.summary || "None"],
+          ["Background image", latest?.background_image || "None"],
+          ["Primary destination", trip.destinations.find(({ id }) => id === latest?.destination_id)?.name || "None"],
+        ]) {
+          const term = document.createElement("dt");
+          term.textContent = label;
+          const detail = document.createElement("dd");
+          detail.textContent = value;
+          fields.append(term, detail);
+        }
+        const explanation = document.createElement("p");
+        explanation.textContent = "Your unsaved values remain in the form. Reload saved values or deliberately reapply yours.";
+        const choices = document.createElement("div");
+        choices.className = "trip-details-form__conflict-actions";
+        const reload = document.createElement("button");
+        reload.type = "button";
+        reload.textContent = "Reload latest";
+        reload.addEventListener("click", () => {
+          clearDraft(); dirty = false;
+          planDraft = dailyPlanDraft(trip, planDraft.date);
+          refreshPreview(); showPlan();
+        });
+        const reapply = document.createElement("button");
+        reapply.type = "button";
+        reapply.textContent = retryOperation?.label ?? "Reapply my changes";
+        reapply.addEventListener("click", async () => {
+          if (retryOperation) {
+            if (!latest) {
+              validation.textContent = "This plan was removed. Reload the latest guide.";
+              return;
+            }
+            reapply.disabled = true;
+            try {
+              trip = await retryOperation.run(latest.revision);
+              dirty = false;
+              planDraft = dailyPlanDraft(trip, retryOperation.after_date);
+              refreshPreview(); showPlan();
+            } catch (error) {
+              if (error instanceof ApiError && error.status === 409 && error.latest_values) {
+                showPlanConflict(error.latest_values, retryOperation);
+              } else validation.textContent = error instanceof Error ? error.message : "Could not retry. Reload and try again.";
+            } finally { reapply.disabled = false; }
+            return;
+          }
+          clearDraft();
+          if (latest) planDraft.id = latest.id;
+          else delete planDraft.id;
+          planDraft.starting_revision = latest?.revision ?? trip.content_revision;
+          dirty = true;
+          persistDraft();
+          conflictPending = false;
+          save.disabled = false;
+          conflict.remove();
+          validation.textContent = "Review your retained values, then retry save.";
+        });
+        choices.append(reload, reapply);
+        conflict.append(heading, fields, explanation, choices);
+        form.insertBefore(conflict, actions);
+        validation.textContent = "This Daily plan changed after editing started.";
+      };
+      const savePlan = async (): Promise<boolean> => {
+        if (conflictPending) return false;
+        validation.textContent = "";
+        if (planDraft.background_image && !/^https:\/\/[^\s/]+/.test(planDraft.background_image)) {
+          validation.textContent = "Enter an HTTPS background image URL.";
+          background.querySelector("input")?.focus();
+          return false;
+        }
+        save.disabled = true;
+        try {
+          const updated = await writeDailyPlan(trip.id, planDraft.date, {
+            ...(planDraft.id ? { id: planDraft.id } : {}),
+            starting_revision: planDraft.starting_revision,
+            destination_id: planDraft.destination_id,
+            title: planDraft.title,
+            summary: planDraft.summary,
+            background_image: planDraft.background_image,
+          });
+          clearDraft(); trip = updated; dirty = false;
+          planDraft = dailyPlanDraft(trip, planDraft.date);
+          refreshPreview(); showPlan();
+          return true;
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 409 && error.latest_values) {
+            showPlanConflict(error.latest_values);
+          } else if (error instanceof ApiError && error.status === 403) {
+            clearDailyPlanDrafts(trip.id);
+            form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach((input) => (input.readOnly = true));
+            destinationSelect.disabled = true;
+            editor.querySelectorAll<HTMLButtonElement>("button").forEach((button) => (button.disabled = true));
+            validation.textContent = "Your editing permission changed. Your values remain available to copy.";
+          } else if (error instanceof ApiError && error.status === 401) {
+            validation.textContent = "Your Session expired. Sign in again to retry with these values.";
+            const signIn = document.createElement("div");
+            form.insertBefore(signIn, actions);
+            void renderGoogleSignIn(signIn, () => {
+              void (async () => {
+                const account = await loadCurrentAccount();
+                if (account.id !== accountId) {
+                  clearDailyPlanDrafts();
+                  window.location.assign("/tripper/my-trips");
+                  return;
+                }
+                const latestTrip = await loadParticipantTrip(trip.id);
+                if (latestTrip.role === "traveller") {
+                  clearDailyPlanDrafts(trip.id);
+                  validation.textContent = "Your editing permission changed. Your values remain available to copy.";
+                  form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach((input) => (input.readOnly = true));
+                  destinationSelect.disabled = true;
+                  return;
+                }
+                trip = latestTrip;
+                const latest = trip.daily_plans.find(({ date }) => date === planDraft.date);
+                if (latest?.id !== planDraft.id ||
+                    (latest?.revision ?? trip.content_revision) !== planDraft.starting_revision) {
+                  showPlanConflict(trip);
+                } else validation.textContent = "Signed in again. Retry save when ready.";
+                signIn.remove();
+              })().catch(() => { validation.textContent = "Could not restore your Session. Your values are still here."; });
+            });
+          } else {
+            validation.textContent = error instanceof Error ? error.message : "Could not save plan. Retry.";
+          }
+          return false;
+        } finally { save.disabled = conflictPending; }
+      };
+      saveCurrentForm = savePlan;
+      form.addEventListener("submit", (event) => { event.preventDefault(); void savePlan(); });
+      editor.append(form);
+      if (planDraft.id !== current?.id ||
+          planDraft.starting_revision !== (current?.revision ?? trip.content_revision)) {
+        showPlanConflict(trip);
+      }
+      if (current) {
+        const move = document.createElement("label");
+        move.textContent = "Move complete plan to";
+        const target = document.createElement("select");
+        for (const date of trip.calendar.filter(({ date }) => date !== current.date)) {
+          const option = document.createElement("option");
+          option.value = date.date;
+          option.textContent = formatDateLabel(date.date) + (date.is_planned ? " (planned)" : "");
+          target.appendChild(option);
+        }
+        move.appendChild(target);
+        const moveButton = document.createElement("button");
+        moveButton.type = "button";
+        moveButton.textContent = "Move plan";
+        moveButton.addEventListener("click", async () => {
+          if (conflictPending) { validation.textContent = "Review the latest values before moving."; return; }
+          if (dirty) { validation.textContent = "Save or Cancel your day changes before moving the plan."; return; }
+          if (!target.value) return;
+          try {
+            trip = await moveDailyPlan(trip.id, current.id, target.value, current.revision);
+            planDraft = dailyPlanDraft(trip, target.value);
+            refreshPreview(); showPlan();
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 409 && error.latest_values) {
+              showPlanConflict(error.latest_values, {
+                label: "Retry move",
+                after_date: target.value,
+                run: (revision) => moveDailyPlan(trip.id, current.id, target.value, revision),
+              });
+            } else validation.textContent = error instanceof Error ? error.message : "Move failed.";
+          }
+        });
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.textContent = "Clear plan";
+        clear.addEventListener("click", async () => {
+          if (conflictPending) { validation.textContent = "Review the latest values before clearing."; return; }
+          if (dirty) { validation.textContent = "Save or Cancel your day changes before clearing the plan."; return; }
+          if (!window.confirm(`Clear the complete plan for ${formatDateLabel(current.date)}? This removes its activities, stay, and photos.`)) return;
+          try {
+            trip = await clearDailyPlan(trip.id, current.date, current.revision);
+            planDraft = dailyPlanDraft(trip, current.date);
+            refreshPreview(); showPlan();
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 409 && error.latest_values) {
+              showPlanConflict(error.latest_values, {
+                label: "Retry clear",
+                after_date: current.date,
+                run: (revision) => clearDailyPlan(trip.id, current.date, revision),
+              });
+            } else validation.textContent = error instanceof Error ? error.message : "Could not clear plan.";
+          }
+        });
+        editor.append(move, moveButton, clear);
+      }
+    };
     const selectDate = (button: HTMLButtonElement, index: number): void => {
       dayNavigation
         .querySelectorAll("button")
@@ -324,17 +671,26 @@ function renderEditorWorkspace(
       const plan = trip.daily_plans.find(({ date }) => date === calendarDate.date);
       dayTitle.textContent = formatDateLabel(calendarDate.date);
       dayStatus.textContent = plan?.title || "Not planned yet";
+      if (planDraft.date !== calendarDate.date) {
+        planDraft = dailyPlanDraft(trip, calendarDate.date);
+        dirty = false;
+      }
+      renderEditor();
+      refreshPreview();
     };
     trip.calendar.forEach((calendarDate, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = String(new Date(`${calendarDate.date}T00:00:00Z`).getUTCDate());
       button.setAttribute("aria-label", formatDateLabel(calendarDate.date));
-      button.addEventListener("click", () => selectDate(button, index));
+      button.addEventListener("click", () => {
+        if (button.getAttribute("aria-current") === "date") return;
+        requestNavigation(() => selectDate(button, index));
+      });
       dayNavigation.appendChild(button);
-      if (index === 0) selectDate(button, index);
+      if (calendarDate.date === planDraft.date) selectDate(button, index);
     });
-    day.append(dayTitle, dayStatus);
+    day.append(dayTitle, dayStatus, editor);
     panel.append(title, dayNavigation, day, createRoster(trip));
     content.replaceChildren(panel);
   };
@@ -692,6 +1048,7 @@ function renderEditorWorkspace(
           const currentAccount = await loadCurrentAccount();
           if (currentAccount.id !== accountId) {
             clearTripDetailsDrafts();
+            clearDailyPlanDrafts();
             window.location.assign("/tripper/my-trips");
             return;
           }
@@ -831,6 +1188,7 @@ export async function renderTripPlanner(
     ]);
     if (trip.role === "traveller") {
       clearTripDetailsDrafts(trip.id);
+      clearDailyPlanDrafts(trip.id);
       renderReadOnlyWorkspace(app, trip);
       return;
     }
@@ -839,6 +1197,7 @@ export async function renderTripPlanner(
   } catch (caught) {
     if (caught instanceof ApiError && [403, 404].includes(caught.status)) {
       clearTripDetailsDrafts(tripId);
+      clearDailyPlanDrafts(tripId);
     }
     loading.className = "error";
     loading.textContent =

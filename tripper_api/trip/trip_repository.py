@@ -49,6 +49,9 @@ class _StoredPhoto:
 
 @dataclass(frozen=True)
 class _StoredDailyPlan:
+    id: UUID
+    destination_id: UUID
+    revision: int
     date: date
     title: str
     summary: str
@@ -73,6 +76,7 @@ class _StoredDestination:
 class _StoredParticipantGuide:
     id: UUID
     revision: int
+    content_revision: int
     role: TripRole
     name: str
     destination: str
@@ -152,6 +156,7 @@ class TripRepository:
             select(
                 Trip.id,
                 Trip.revision,
+                Trip.content_revision,
                 TripMembership.role,
                 Trip.name,
                 Destination.name,
@@ -215,6 +220,8 @@ class TripRepository:
                 await self._session.execute(
                     select(
                         DailyPlan.id,
+                        DailyPlan.destination_id,
+                        DailyPlan.revision,
                         DailyPlan.date,
                         DailyPlan.title,
                         DailyPlan.summary,
@@ -228,7 +235,15 @@ class TripRepository:
             .all()
         )
         daily_plans: list[_StoredDailyPlan] = []
-        for plan_id, plan_date, title, summary, background_image in plan_rows:
+        for (
+            plan_id,
+            destination_id,
+            revision,
+            plan_date,
+            title,
+            summary,
+            background_image,
+        ) in plan_rows:
             timeline_rows = (
                 (
                     await self._session.execute(
@@ -278,6 +293,9 @@ class TripRepository:
             )
             daily_plans.append(
                 _StoredDailyPlan(
+                    id=plan_id,
+                    destination_id=destination_id,
+                    revision=revision,
                     date=plan_date,
                     title=title,
                     summary=summary,
@@ -292,16 +310,17 @@ class TripRepository:
         return _StoredParticipantGuide(
             id=row[0],
             revision=row[1],
-            role=row[2],
-            name=row[3],
-            destination=row[4],
-            short_name=row[5],
-            description=row[6],
-            timezone=row[7],
-            latitude=row[8],
-            longitude=row[9],
-            start_date=row[10],
-            end_date=row[11],
+            content_revision=row[2],
+            role=row[3],
+            name=row[4],
+            destination=row[5],
+            short_name=row[6],
+            description=row[7],
+            timezone=row[8],
+            latitude=row[9],
+            longitude=row[10],
+            start_date=row[11],
+            end_date=row[12],
             destinations=tuple(_StoredDestination(*row) for row in destination_rows),
             daily_plans=tuple(daily_plans),
             roster=tuple((display_name, role) for display_name, role in roster_rows),
@@ -367,6 +386,28 @@ class TripRepository:
                 | timeline_destination_ids
             ),
         )
+
+    async def plan_on_date(self, trip_id: UUID, plan_date: date) -> DailyPlan | None:
+        result = await self._session.scalars(
+            select(DailyPlan).where(
+                DailyPlan.trip_id == trip_id, DailyPlan.date == plan_date
+            )
+        )
+        return result.one_or_none()
+
+    async def plan_by_id(self, trip_id: UUID, plan_id: UUID) -> DailyPlan | None:
+        result = await self._session.scalars(
+            select(DailyPlan).where(
+                DailyPlan.trip_id == trip_id, DailyPlan.id == plan_id
+            )
+        )
+        return result.one_or_none()
+
+    def add_plan(self, plan: DailyPlan) -> None:
+        self._session.add(plan)
+
+    async def delete_plan(self, plan: DailyPlan) -> None:
+        await self._session.delete(plan)
 
     async def replace_destinations(
         self,

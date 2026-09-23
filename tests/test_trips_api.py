@@ -173,6 +173,191 @@ async def add_timeline_entry(
     await engine.dispose()
 
 
+async def test_editor_creates_edits_and_clears_one_daily_plan(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        before = (await client.get(f"/api/trips/{trip_id}")).json()
+        date = "2027-06-11"
+        created = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/{date}",
+            json={
+                "starting_revision": before["content_revision"],
+                "destination_id": before["destinations"][0]["id"],
+                "title": "Island arrival",
+                "summary": "Ferry and dinner",
+                "background_image": "https://example.com/island.jpg",
+            },
+        )
+        assert created.status_code == 200
+        saved = created.json()
+        plan = saved["daily_plans"][0]
+        assert (plan["date"], plan["title"], plan["summary"]) == (
+            date,
+            "Island arrival",
+            "Ferry and dinner",
+        )
+        assert saved["calendar"][1]["is_planned"] is True
+        assert saved["calendar"][0]["is_planned"] is False
+
+        edited = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/{date}",
+            json={
+                "id": plan["id"],
+                "starting_revision": plan["revision"],
+                "destination_id": plan["destination_id"],
+                "title": "Island day",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        assert edited.status_code == 200
+        assert edited.json()["daily_plans"][0]["id"] == plan["id"]
+        assert edited.json()["daily_plans"][0]["revision"] == plan["revision"] + 1
+
+        cleared = await client.request(
+            "DELETE",
+            f"/api/trips/{trip_id}/daily-plans/{date}",
+            json={"starting_revision": plan["revision"] + 1},
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["daily_plans"] == []
+        assert cleared.json()["calendar"][1]["is_planned"] is False
+
+
+async def test_move_daily_plan_preserves_its_content_and_rejects_occupied_target(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        destination_id = detail["destinations"][0]["id"]
+        plan_id = await add_daily_plan(
+            database_settings,
+            trip_id=trip_id,
+            destination_id=destination_id,
+            plan_date="2027-06-10",
+        )
+        await add_timeline_entry(
+            database_settings, daily_plan_id=plan_id, destination_id=destination_id
+        )
+        target_id = await add_daily_plan(
+            database_settings,
+            trip_id=trip_id,
+            destination_id=destination_id,
+            plan_date="2027-06-12",
+        )
+        source = (await client.get(f"/api/trips/{trip_id}")).json()["daily_plans"][0]
+        move_path = f"/api/trips/{trip_id}/daily-plans/{plan_id}/move"
+        occupied = await client.post(
+            move_path,
+            json={"starting_revision": source["revision"], "target_date": "2027-06-12"},
+        )
+        outside = await client.post(
+            move_path,
+            json={"starting_revision": source["revision"], "target_date": "2027-06-18"},
+        )
+        assert occupied.status_code == 409
+        assert outside.status_code == 422
+        assert [
+            p["date"]
+            for p in (await client.get(f"/api/trips/{trip_id}")).json()["daily_plans"]
+        ] == ["2027-06-10", "2027-06-12"]
+
+        moved = await client.post(
+            move_path,
+            json={"starting_revision": source["revision"], "target_date": "2027-06-11"},
+        )
+        assert moved.status_code == 200
+        plans = moved.json()["daily_plans"]
+        assert plans[0]["id"] == str(plan_id)
+        assert plans[0]["date"] == "2027-06-11"
+        assert plans[0]["timeline"][0]["title"] == "Athens stop"
+        assert plans[1]["id"] == str(target_id)
+        assert (
+            await client.post(
+                move_path,
+                json={
+                    "starting_revision": source["revision"],
+                    "target_date": "2027-06-13",
+                },
+            )
+        ).status_code == 409
+
+
+async def test_daily_plan_writes_reject_stale_creation_invalid_input_and_travellers(
+    database_settings: Settings,
+) -> None:
+    async for creator, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await creator.post("/api/trips", json=TRIP)).json()["id"]
+        before = (await creator.get(f"/api/trips/{trip_id}")).json()
+        path = f"/api/trips/{trip_id}/daily-plans/2027-06-10"
+        payload = {
+            "starting_revision": before["content_revision"],
+            "destination_id": before["destinations"][0]["id"],
+            "title": "Arrival",
+            "summary": "",
+            "background_image": "",
+        }
+        invalid_image = await creator.put(
+            path, json={**payload, "background_image": "http://example.com/image.jpg"}
+        )
+        invalid_destination = await creator.put(
+            path, json={**payload, "destination_id": str(uuid4())}
+        )
+        assert invalid_image.status_code == 422
+        assert invalid_destination.status_code == 422
+        assert (await creator.get(f"/api/trips/{trip_id}")).json()["daily_plans"] == []
+
+        saved = await creator.put(path, json=payload)
+        assert saved.status_code == 200
+        duplicate = await creator.put(path, json=payload)
+        assert duplicate.status_code == 409
+        assert duplicate.json()["error"]["code"] == "daily_plan_revision_conflict"
+        assert (
+            duplicate.json()["error"]["latest_values"]["daily_plans"][0]["title"]
+            == "Arrival"
+        )
+        stale = await creator.put(
+            path,
+            json={
+                **payload,
+                "id": saved.json()["daily_plans"][0]["id"],
+                "starting_revision": 100,
+            },
+        )
+        assert stale.status_code == 409
+        assert (
+            stale.json()["error"]["latest_values"]["daily_plans"][0]["title"]
+            == "Arrival"
+        )
+        assert (await creator.get(f"/api/trips/{trip_id}")).json()["daily_plans"][0][
+            "title"
+        ] == "Arrival"
+
+    await add_participant(
+        database_settings,
+        trip_id=trip_id,
+        account_id=JAMIE_ID,
+        display_name="Jamie",
+        role="traveller",
+    )
+    async for traveller, _ in app_client(database_settings, {"id": JAMIE_ID}):
+        forbidden = await traveller.put(
+            path,
+            json={
+                **payload,
+                "id": saved.json()["daily_plans"][0]["id"],
+                "title": "Forbidden",
+            },
+        )
+        assert forbidden.status_code == 403
+        assert (await traveller.get(f"/api/trips/{trip_id}")).json()["daily_plans"][0][
+            "title"
+        ] == "Arrival"
+
+
 async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
     database_settings: Settings,
 ) -> None:
