@@ -358,6 +358,316 @@ async def test_daily_plan_writes_reject_stale_creation_invalid_input_and_travell
         ] == "Arrival"
 
 
+async def test_editor_creates_independent_timeline_entries_in_chronological_order(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        before = (await client.get(f"/api/trips/{trip_id}")).json()
+        plan_response = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": before["content_revision"],
+                "destination_id": before["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = plan_response.json()["daily_plans"][0]
+        path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/timeline"
+
+        late = await client.post(
+            path,
+            json={
+                "starting_revision": plan["timeline_revision"],
+                "time": "11:30",
+                "title": "Museum",
+                "description": "Independent stop",
+                "location_name": "Acropolis Museum",
+            },
+        )
+        equal = await client.post(
+            path,
+            json={
+                "starting_revision": late.json()["daily_plans"][0]["timeline_revision"],
+                "destination_id": before["destinations"][0]["id"],
+                "time": "11:30",
+                "title": "Coffee",
+            },
+        )
+        early = await client.post(
+            path,
+            json={
+                "starting_revision": equal.json()["daily_plans"][0][
+                    "timeline_revision"
+                ],
+                "time": "09:00",
+                "title": "Breakfast",
+            },
+        )
+
+    assert late.status_code == 201
+    assert equal.status_code == 201
+    assert early.status_code == 201
+    saved_plan = early.json()["daily_plans"][0]
+    assert [entry["title"] for entry in saved_plan["timeline"]] == [
+        "Breakfast",
+        "Museum",
+        "Coffee",
+    ]
+    assert len({entry["id"] for entry in saved_plan["timeline"]}) == 3
+    assert all(entry["revision"] == 1 for entry in saved_plan["timeline"])
+    assert all(entry["timezone"] == "Europe/Athens" for entry in saved_plan["timeline"])
+    assert saved_plan["timeline"][1]["destination_id"] is None
+    assert (
+        saved_plan["timeline"][2]["destination_id"] == before["destinations"][0]["id"]
+    )
+
+
+async def test_editor_edits_and_deletes_one_timeline_entry_without_recreating_it(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        before = (await client.get(f"/api/trips/{trip_id}")).json()
+        with_plan = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": before["content_revision"],
+                "destination_id": before["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = with_plan.json()["daily_plans"][0]
+        collection_path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/timeline"
+        created = await client.post(
+            collection_path,
+            json={
+                "starting_revision": plan["timeline_revision"],
+                "time": "10:00",
+                "title": "Old title",
+            },
+        )
+        entry = created.json()["daily_plans"][0]["timeline"][0]
+        entry_path = f"{collection_path}/{entry['id']}"
+
+        edited = await client.put(
+            entry_path,
+            json={
+                "starting_revision": entry["revision"],
+                "time": "08:15",
+                "title": "Breakfast",
+                "description": "Meet downstairs",
+                "location_name": "Hotel cafe",
+                "location": {"lat": 37.98, "lng": 23.72},
+            },
+        )
+        edited_plan = edited.json()["daily_plans"][0]
+        saved_entry = edited_plan["timeline"][0]
+        deleted = await client.request(
+            "DELETE",
+            entry_path,
+            json={
+                "starting_revision": saved_entry["revision"],
+                "starting_collection_revision": edited_plan["timeline_revision"],
+            },
+        )
+
+    assert edited.status_code == 200
+    assert saved_entry["id"] == entry["id"]
+    assert saved_entry["revision"] == entry["revision"] + 1
+    assert saved_entry["title"] == "Breakfast"
+    assert saved_entry["time"] == "08:15:00"
+    assert saved_entry["location"] == {"lat": 37.98, "lng": 23.72}
+    assert deleted.status_code == 200
+    assert deleted.json()["daily_plans"][0]["timeline"] == []
+
+
+async def test_timeline_reorder_is_atomic_and_rejects_a_stale_collection(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        with_plan = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = with_plan.json()["daily_plans"][0]
+        collection_path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/timeline"
+        current = with_plan.json()
+        for title in ("First", "Second", "Third"):
+            plan = current["daily_plans"][0]
+            response = await client.post(
+                collection_path,
+                json={
+                    "starting_revision": plan["timeline_revision"],
+                    "time": "10:00",
+                    "title": title,
+                },
+            )
+            current = response.json()
+        plan = current["daily_plans"][0]
+        original_ids = [entry["id"] for entry in plan["timeline"]]
+        reordered = await client.post(
+            f"{collection_path}/reorder",
+            json={
+                "starting_revision": plan["timeline_revision"],
+                "entry_ids": list(reversed(original_ids)),
+            },
+        )
+        stale = await client.post(
+            f"{collection_path}/reorder",
+            json={
+                "starting_revision": plan["timeline_revision"],
+                "entry_ids": original_ids,
+            },
+        )
+
+    assert reordered.status_code == 200
+    assert [
+        entry["id"] for entry in reordered.json()["daily_plans"][0]["timeline"]
+    ] == list(reversed(original_ids))
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "timeline_collection_revision_conflict"
+    assert [
+        entry["id"]
+        for entry in stale.json()["error"]["latest_values"]["daily_plans"][0][
+            "timeline"
+        ]
+    ] == list(reversed(original_ids))
+
+
+async def test_timeline_move_preserves_identity_and_rejects_stale_collections(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        current = detail
+        for plan_date, title in (("2027-06-10", "Athens"), ("2027-06-11", "Island")):
+            response = await client.put(
+                f"/api/trips/{trip_id}/daily-plans/{plan_date}",
+                json={
+                    "starting_revision": current["content_revision"],
+                    "destination_id": detail["destinations"][0]["id"],
+                    "title": title,
+                    "summary": "",
+                    "background_image": "",
+                },
+            )
+            current = response.json()
+        source, target = current["daily_plans"]
+        source_path = f"/api/trips/{trip_id}/daily-plans/{source['id']}/timeline"
+        created = await client.post(
+            source_path,
+            json={
+                "starting_revision": source["timeline_revision"],
+                "time": "12:00",
+                "title": "Lunch",
+            },
+        )
+        source, target = created.json()["daily_plans"]
+        entry = source["timeline"][0]
+        move_path = f"{source_path}/{entry['id']}/move"
+        stale_target_revision = target["timeline_revision"]
+        target_path = f"/api/trips/{trip_id}/daily-plans/{target['id']}/timeline"
+        target_changed = await client.post(
+            target_path,
+            json={
+                "starting_revision": stale_target_revision,
+                "time": "08:00",
+                "title": "Coffee",
+            },
+        )
+        source, target = target_changed.json()["daily_plans"]
+        rejected = await client.post(
+            move_path,
+            json={
+                "source_starting_revision": source["timeline_revision"],
+                "target_plan_id": target["id"],
+                "target_starting_revision": stale_target_revision,
+            },
+        )
+        latest_source, latest_target = rejected.json()["error"]["latest_values"][
+            "daily_plans"
+        ]
+        moved = await client.post(
+            move_path,
+            json={
+                "source_starting_revision": latest_source["timeline_revision"],
+                "target_plan_id": latest_target["id"],
+                "target_starting_revision": latest_target["timeline_revision"],
+            },
+        )
+
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "timeline_collection_revision_conflict"
+    assert [item["id"] for item in latest_source["timeline"]] == [entry["id"]]
+    assert moved.status_code == 200
+    moved_source, moved_target = moved.json()["daily_plans"]
+    assert moved_source["timeline"] == []
+    assert [item["title"] for item in moved_target["timeline"]] == ["Coffee", "Lunch"]
+    assert moved_target["timeline"][1]["id"] == entry["id"]
+    assert moved_target["timeline"][1]["revision"] == entry["revision"]
+
+
+async def test_timeline_writes_validate_local_fields_and_editor_permission(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        saved = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = saved.json()["daily_plans"][0]
+        path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/timeline"
+        base = {
+            "starting_revision": plan["timeline_revision"],
+            "time": "10:00",
+            "title": "Breakfast",
+        }
+        blank_title = await client.post(path, json={**base, "title": "   "})
+        offset_time = await client.post(path, json={**base, "time": "10:00+02:00"})
+        invalid_destination = await client.post(
+            path, json={**base, "destination_id": str(uuid4())}
+        )
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+            display_name="Jamie Traveller",
+            role="traveller",
+        )
+        user["id"] = JAMIE_ID
+        forbidden = await client.post(path, json=base)
+        unchanged = await client.get(f"/api/trips/{trip_id}")
+
+    assert blank_title.status_code == 422
+    assert offset_time.status_code == 422
+    assert invalid_destination.status_code == 422
+    assert forbidden.status_code == 403
+    assert unchanged.json()["daily_plans"][0]["timeline"] == []
+
+
 async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
     database_settings: Settings,
 ) -> None:

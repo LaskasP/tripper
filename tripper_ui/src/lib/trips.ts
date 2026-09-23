@@ -21,6 +21,28 @@ export interface NewTrip {
   end_date: string;
 }
 
+export interface TimelineEntryDetail {
+  id: string;
+  destination_id: string | null;
+  revision: number;
+  position: number;
+  time: string;
+  timezone: string;
+  title: string;
+  description: string;
+  location: { lat: number; lng: number } | null;
+  location_name: string | null;
+}
+
+export interface TimelineEntryWrite {
+  destination_id?: string | null;
+  time: string;
+  title: string;
+  description?: string;
+  location_name?: string | null;
+  location?: { lat: number; lng: number } | null;
+}
+
 export interface TripDetail {
   id: string;
   revision: number;
@@ -51,6 +73,7 @@ export interface TripDetail {
     id: string;
     destination_id: string;
     revision: number;
+    timeline_revision: number;
     date: string;
     day_number: number;
     title: string;
@@ -65,13 +88,7 @@ export interface TripDetail {
       public_listing_url: string | null;
       booking_platform: "booking.com" | "airbnb" | null;
     } | null;
-    timeline: Array<{
-      time: string;
-      title: string;
-      description: string;
-      location: { lat: number; lng: number } | null;
-      location_name: string | null;
-    }>;
+    timeline: TimelineEntryDetail[];
     photos: Array<{ url: string; caption: string }>;
   }>;
   roster: Array<{
@@ -200,6 +217,86 @@ export function moveDailyPlan(
   return apiRequest<TripDetail>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/move`,
     { method: "POST", body: JSON.stringify({ starting_revision: startingRevision, target_date: targetDate }) },
+  );
+}
+
+export function createTimelineEntry(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  entry: TimelineEntryWrite,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/timeline`,
+    { method: "POST", body: JSON.stringify({ ...entry, starting_revision: startingRevision }) },
+  );
+}
+
+export function updateTimelineEntry(
+  tripId: string,
+  planId: string,
+  entryId: string,
+  startingRevision: number,
+  entry: TimelineEntryWrite,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/timeline/${encodeURIComponent(entryId)}`,
+    { method: "PUT", body: JSON.stringify({ ...entry, starting_revision: startingRevision }) },
+  );
+}
+
+export function deleteTimelineEntry(
+  tripId: string,
+  planId: string,
+  entryId: string,
+  startingRevision: number,
+  startingCollectionRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/timeline/${encodeURIComponent(entryId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({
+        starting_revision: startingRevision,
+        starting_collection_revision: startingCollectionRevision,
+      }),
+    },
+  );
+}
+
+export function reorderTimelineEntries(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  entryIds: string[],
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/timeline/reorder`,
+    {
+      method: "POST",
+      body: JSON.stringify({ starting_revision: startingRevision, entry_ids: entryIds }),
+    },
+  );
+}
+
+export function moveTimelineEntry(
+  tripId: string,
+  sourcePlanId: string,
+  entryId: string,
+  sourceStartingRevision: number,
+  targetPlanId: string,
+  targetStartingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(sourcePlanId)}/timeline/${encodeURIComponent(entryId)}/move`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        source_starting_revision: sourceStartingRevision,
+        target_plan_id: targetPlanId,
+        target_starting_revision: targetStartingRevision,
+      }),
+    },
   );
 }
 import { sessionCsrfToken } from "./auth";

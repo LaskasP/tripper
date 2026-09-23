@@ -118,6 +118,9 @@ class DailyPlan(Base):
     __tablename__ = "daily_plans"
     __table_args__ = (
         CheckConstraint("revision > 0", name="positive_daily_plan_revision"),
+        CheckConstraint(
+            "timeline_revision > 0", name="positive_timeline_collection_revision"
+        ),
         UniqueConstraint("trip_id", "date", name="uq_daily_plan_trip_date"),
     )
 
@@ -131,6 +134,7 @@ class DailyPlan(Base):
     summary: Mapped[str] = mapped_column(Text)
     background_image: Mapped[str] = mapped_column(Text)
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
+    timeline_revision: Mapped[int] = mapped_column(Integer, server_default="1")
 
 
 class TimelineEntry(Base):

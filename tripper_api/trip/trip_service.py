@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from itertools import pairwise
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,12 @@ from tripper_api.trip.trip_dto import (
     LocationInput,
     PhotoResponse,
     StayResponse,
+    TimelineEntryCreateRequest,
+    TimelineEntryDeleteRequest,
+    TimelineEntryMoveRequest,
     TimelineEntryResponse,
+    TimelineEntryUpdateRequest,
+    TimelineReorderRequest,
     TripCalendarDateResponse,
     TripCreateRequest,
     TripDetailResponse,
@@ -25,6 +31,10 @@ from tripper_api.trip.trip_errors import (
     DailyPlanOccupiedError,
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
+    TimelineCollectionRevisionConflictError,
+    TimelineEntryNotFoundError,
+    TimelineEntryRevisionConflictError,
+    TimelineOrderInvalidError,
     TripDateRangeExcludesPlansError,
     TripDestinationInUseError,
     TripDestinationMismatchError,
@@ -35,6 +45,7 @@ from tripper_api.trip.trip_errors import (
 from tripper_api.trip.trip_model import (
     DailyPlan,
     Destination,
+    TimelineEntry,
     Trip,
     TripMembership,
     TripRole,
@@ -148,6 +159,7 @@ class TripService:
                     id=plan.id,
                     destination_id=plan.destination_id,
                     revision=plan.revision,
+                    timeline_revision=plan.timeline_revision,
                     date=plan.date,
                     day_number=(plan.date - trip.start_date).days + 1,
                     title=plan.title,
@@ -168,7 +180,19 @@ class TripService:
                     ),
                     timeline=[
                         TimelineEntryResponse(
+                            id=entry.id,
+                            destination_id=entry.destination_id,
+                            revision=entry.revision,
+                            position=entry.position,
                             time=entry.local_time,
+                            timezone=(
+                                next(
+                                    destination.timezone
+                                    for destination in trip.destinations
+                                    if destination.id
+                                    == (entry.destination_id or plan.destination_id)
+                                )
+                            ),
                             title=entry.title,
                             description=entry.description,
                             location=_location(entry.latitude, entry.longitude),
@@ -352,6 +376,223 @@ class TripService:
         if conflict:
             latest = await self.get_participant_guide(trip_id, account_id)
             raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def create_timeline_entry(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        request: TimelineEntryCreateRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            if request.destination_id is not None and request.destination_id not in {
+                destination.id for destination in stored.destinations
+            }:
+                raise TripDestinationMismatchError
+            if plan.timeline_revision != request.starting_revision:
+                conflict = True
+            else:
+                self._repository.add_timeline_entry(
+                    TimelineEntry(
+                        id=uuid4(),
+                        daily_plan_id=plan.id,
+                        destination_id=request.destination_id,
+                        local_time=request.time,
+                        title=request.title,
+                        description=request.description,
+                        location_name=request.location_name,
+                        latitude=request.location.lat if request.location else None,
+                        longitude=request.location.lng if request.location else None,
+                        position=await self._repository.next_timeline_position(plan.id),
+                    )
+                )
+                plan.timeline_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise TimelineCollectionRevisionConflictError(
+                latest.model_dump(mode="json")
+            )
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def update_timeline_entry(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        entry_id: UUID,
+        request: TimelineEntryUpdateRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            entry = await self._repository.timeline_entry_by_id(plan.id, entry_id)
+            if entry is None:
+                raise TimelineEntryNotFoundError
+            if request.destination_id is not None and request.destination_id not in {
+                destination.id for destination in stored.destinations
+            }:
+                raise TripDestinationMismatchError
+            if entry.revision != request.starting_revision:
+                conflict = True
+            else:
+                entry.destination_id = request.destination_id
+                entry.local_time = request.time
+                entry.title = request.title
+                entry.description = request.description
+                entry.location_name = request.location_name
+                entry.latitude = request.location.lat if request.location else None
+                entry.longitude = request.location.lng if request.location else None
+                entry.revision += 1
+                plan.timeline_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise TimelineEntryRevisionConflictError(latest.model_dump(mode="json"))
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def delete_timeline_entry(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        entry_id: UUID,
+        request: TimelineEntryDeleteRequest,
+    ) -> TripDetailResponse:
+        entry_conflict = False
+        collection_conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            entry = await self._repository.timeline_entry_by_id(plan.id, entry_id)
+            if entry is None:
+                raise TimelineEntryNotFoundError
+            entry_conflict = entry.revision != request.starting_revision
+            collection_conflict = (
+                plan.timeline_revision != request.starting_collection_revision
+            )
+            if not entry_conflict and not collection_conflict:
+                await self._repository.delete_timeline_entry(entry)
+                plan.timeline_revision += 1
+                stored.trip.content_revision += 1
+        if entry_conflict or collection_conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            if entry_conflict:
+                raise TimelineEntryRevisionConflictError(latest.model_dump(mode="json"))
+            raise TimelineCollectionRevisionConflictError(
+                latest.model_dump(mode="json")
+            )
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def reorder_timeline_entries(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        request: TimelineReorderRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            if plan.timeline_revision != request.starting_revision:
+                conflict = True
+            else:
+                current = await self._repository.timeline_entries(plan.id)
+                by_id = {entry.id: entry for entry in current}
+                if set(request.entry_ids) != set(by_id):
+                    raise TimelineOrderInvalidError
+                ordered = [by_id[entry_id] for entry_id in request.entry_ids]
+                if any(
+                    first.local_time > second.local_time
+                    for first, second in pairwise(ordered)
+                ):
+                    raise TimelineOrderInvalidError
+                await self._repository.reorder_timeline_entries(current, ordered)
+                plan.timeline_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise TimelineCollectionRevisionConflictError(
+                latest.model_dump(mode="json")
+            )
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def move_timeline_entry(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        source_plan_id: UUID,
+        entry_id: UUID,
+        request: TimelineEntryMoveRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            source = await self._repository.plan_by_id(trip_id, source_plan_id)
+            target = await self._repository.plan_by_id(trip_id, request.target_plan_id)
+            if source is None or target is None or source.id == target.id:
+                raise DailyPlanNotFoundError
+            entry = await self._repository.timeline_entry_by_id(source.id, entry_id)
+            if entry is None:
+                raise TimelineEntryNotFoundError
+            if (
+                source.timeline_revision != request.source_starting_revision
+                or target.timeline_revision != request.target_starting_revision
+            ):
+                conflict = True
+            else:
+                target_position = await self._repository.next_timeline_position(
+                    target.id
+                )
+                entry.daily_plan_id = target.id
+                entry.position = target_position
+                source.timeline_revision += 1
+                target.timeline_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise TimelineCollectionRevisionConflictError(
+                latest.model_dump(mode="json")
+            )
         return await self.get_participant_guide(trip_id, account_id)
 
     async def move_daily_plan(

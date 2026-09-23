@@ -21,12 +21,16 @@ from tripper_api.trip.trip_model import (
 
 @dataclass(frozen=True)
 class _StoredTimelineEntry:
+    id: UUID
+    destination_id: UUID | None
     local_time: time
     title: str
     description: str
     location_name: str | None
     latitude: float | None
     longitude: float | None
+    position: int
+    revision: int
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,7 @@ class _StoredDailyPlan:
     id: UUID
     destination_id: UUID
     revision: int
+    timeline_revision: int
     date: date
     title: str
     summary: str
@@ -222,6 +227,7 @@ class TripRepository:
                         DailyPlan.id,
                         DailyPlan.destination_id,
                         DailyPlan.revision,
+                        DailyPlan.timeline_revision,
                         DailyPlan.date,
                         DailyPlan.title,
                         DailyPlan.summary,
@@ -239,6 +245,7 @@ class TripRepository:
             plan_id,
             destination_id,
             revision,
+            timeline_revision,
             plan_date,
             title,
             summary,
@@ -249,14 +256,22 @@ class TripRepository:
                     await self._session.execute(
                         select(
                             TimelineEntry.local_time,
+                            TimelineEntry.id,
+                            TimelineEntry.destination_id,
                             TimelineEntry.title,
                             TimelineEntry.description,
                             TimelineEntry.location_name,
                             TimelineEntry.latitude,
                             TimelineEntry.longitude,
+                            TimelineEntry.position,
+                            TimelineEntry.revision,
                         )
                         .where(TimelineEntry.daily_plan_id == plan_id)
-                        .order_by(TimelineEntry.position, TimelineEntry.id)
+                        .order_by(
+                            TimelineEntry.local_time,
+                            TimelineEntry.position,
+                            TimelineEntry.id,
+                        )
                     )
                 )
                 .tuples()
@@ -296,13 +311,26 @@ class TripRepository:
                     id=plan_id,
                     destination_id=destination_id,
                     revision=revision,
+                    timeline_revision=timeline_revision,
                     date=plan_date,
                     title=title,
                     summary=summary,
                     background_image=background_image,
                     stay=_StoredStay(*stay_row) if stay_row is not None else None,
                     timeline=tuple(
-                        _StoredTimelineEntry(*entry) for entry in timeline_rows
+                        _StoredTimelineEntry(
+                            id=entry[1],
+                            destination_id=entry[2],
+                            local_time=entry[0],
+                            title=entry[3],
+                            description=entry[4],
+                            location_name=entry[5],
+                            latitude=entry[6],
+                            longitude=entry[7],
+                            position=entry[8],
+                            revision=entry[9],
+                        )
+                        for entry in timeline_rows
                     ),
                     photos=tuple(_StoredPhoto(*photo) for photo in photo_rows),
                 )
@@ -405,6 +433,52 @@ class TripRepository:
 
     def add_plan(self, plan: DailyPlan) -> None:
         self._session.add(plan)
+
+    def add_timeline_entry(self, entry: TimelineEntry) -> None:
+        self._session.add(entry)
+
+    async def next_timeline_position(self, daily_plan_id: UUID) -> int:
+        positions = await self._session.scalars(
+            select(TimelineEntry.position).where(
+                TimelineEntry.daily_plan_id == daily_plan_id
+            )
+        )
+        return max(positions.all(), default=-1) + 1
+
+    async def timeline_entry_by_id(
+        self, daily_plan_id: UUID, entry_id: UUID
+    ) -> TimelineEntry | None:
+        result = await self._session.scalars(
+            select(TimelineEntry).where(
+                TimelineEntry.daily_plan_id == daily_plan_id,
+                TimelineEntry.id == entry_id,
+            )
+        )
+        return result.one_or_none()
+
+    async def delete_timeline_entry(self, entry: TimelineEntry) -> None:
+        await self._session.delete(entry)
+
+    async def timeline_entries(self, daily_plan_id: UUID) -> list[TimelineEntry]:
+        result = await self._session.scalars(
+            select(TimelineEntry)
+            .where(TimelineEntry.daily_plan_id == daily_plan_id)
+            .order_by(
+                TimelineEntry.local_time, TimelineEntry.position, TimelineEntry.id
+            )
+        )
+        return list(result.all())
+
+    async def reorder_timeline_entries(
+        self, current: list[TimelineEntry], ordered: list[TimelineEntry]
+    ) -> None:
+        offset = len(current) + 1
+        for entry in current:
+            entry.position += offset
+        await self._session.flush()
+        for position, entry in enumerate(ordered):
+            entry.position = position
+        await self._session.flush()
 
     async def delete_plan(self, plan: DailyPlan) -> None:
         await self._session.delete(plan)

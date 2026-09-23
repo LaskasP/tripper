@@ -61,6 +61,7 @@ test('editor saves, moves, and clears a Daily plan while the guide stays read-on
   await expect(conflict).toContainText('Server summary');
   await conflict.getByRole('button', { name: 'Reapply my changes' }).click();
   await page.getByRole('button', { name: 'Save plan' }).click();
+  await expect(page.getByText('Saved guide preview')).toBeVisible();
   await reader.reload();
   await expect(reader.getByText('My revised ferry notes')).toBeVisible();
 
@@ -89,5 +90,90 @@ test('editor saves, moves, and clears a Daily plan while the guide stays read-on
   await reader.reload();
   await expect(reader.getByRole('heading', { name: 'Ferry day' })).toHaveCount(0);
   await expect(reader.getByText('Not planned yet').first()).toBeVisible();
+  await reader.close();
+});
+
+test('editor manages independent Timeline entries and readers get no editing controls', async ({ page }) => {
+  await page.addInitScript(() => {
+    let googleCallback: (response: { credential: string }) => void;
+    window.google = { accounts: { id: {
+      initialize(options) { googleCallback = options.callback; },
+      renderButton(element) {
+        const button = document.createElement('button');
+        button.textContent = 'Sign in with Google';
+        button.addEventListener('click', () => googleCallback({ credential: 'e2e-google-credential' }));
+        element.appendChild(button);
+      },
+    } } };
+  });
+  await page.goto('/tripper/my-trips');
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: 'Create trip' }).click();
+  await page.getByLabel('Trip name').fill('Timeline editing');
+  await page.getByLabel('Destination').fill('Athens');
+  await page.getByLabel('Timezone').fill('Europe/Athens');
+  await page.getByLabel('Start date').fill('2027-06-10');
+  await page.getByLabel('End date').fill('2027-06-11');
+  await page.getByRole('button', { name: 'Save trip' }).click();
+  await expect(page).toHaveURL(/\/edit$/);
+  const tripUrl = page.url().replace(/\/edit$/, '');
+
+  await page.getByLabel('Day title').fill('Arrival');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  await expect(page.getByRole('button', { name: 'Add activity' })).toBeVisible();
+  await page.getByRole('button', { name: 'June 11, 2027' }).click();
+  await page.getByLabel('Day title').fill('Second day');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  await expect(page.getByRole('button', { name: 'Add activity' })).toBeVisible();
+  await page.getByRole('button', { name: 'June 10, 2027' }).click();
+
+  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByLabel('Activity time').fill('10:00');
+  await page.getByLabel('Activity title').fill('Museum');
+  await page.reload();
+  await expect(page.getByLabel('Activity title')).toHaveValue('Museum');
+  await expect(page.getByText('Unsaved preview')).toBeVisible();
+  await page.getByRole('button', { name: 'Save activity' }).click();
+  await expect(page.getByRole('button', { name: 'Edit Museum' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByLabel('Activity time').fill('10:00');
+  await page.getByLabel('Activity title').fill('Coffee');
+  await page.getByRole('button', { name: 'Save activity' }).click();
+  await expect(page.getByRole('button', { name: 'Edit Coffee' })).toBeVisible();
+  await page.getByRole('button', { name: 'Move Coffee up' }).click();
+  await expect(page.locator('.timeline-editor__item').nth(0)).toContainText('Coffee');
+  await page.getByRole('button', { name: 'Edit Museum' }).click();
+  await page.getByLabel('Activity title').fill('Museum tour');
+  await page.evaluate(async (id) => {
+    const detail = await (await fetch(`/api/trips/${id}`)).json();
+    const plan = detail.daily_plans.find((item: { date: string }) => item.date === '2027-06-10');
+    const entry = plan.timeline.find((item: { title: string }) => item.title === 'Museum');
+    const csrf = document.cookie.split('; ').find((item) => item.startsWith('tripper_csrf='))?.split('=')[1];
+    await fetch(`/api/trips/${id}/daily-plans/${plan.id}/timeline/${entry.id}`, {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': decodeURIComponent(csrf || '') },
+      body: JSON.stringify({
+        starting_revision: entry.revision, destination_id: entry.destination_id,
+        time: entry.time, title: 'Changed elsewhere', description: '', location_name: null,
+      }),
+    });
+  }, tripUrl.split('/').at(-1));
+  await page.getByRole('button', { name: 'Save activity' }).click();
+  await expect(page.getByText('Latest saved activity')).toBeVisible();
+  await expect(page.getByText('Changed elsewhere')).toBeVisible();
+  await expect(page.getByLabel('Activity title')).toHaveValue('Museum tour');
+  await page.getByRole('button', { name: 'Reapply my activity' }).click();
+  await page.getByRole('button', { name: 'Save activity' }).click();
+  await expect(page.getByRole('button', { name: 'Edit Museum tour' })).toBeVisible();
+  await page.getByLabel('Move Museum tour to date').selectOption('2027-06-11');
+  await page.getByRole('button', { name: 'Move Museum tour', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Edit Museum tour' })).toHaveCount(0);
+
+  const reader = await page.context().newPage();
+  await reader.goto(tripUrl);
+  await expect(reader.getByText('Coffee')).toBeVisible();
+  await expect(reader.getByText('Museum tour')).toBeVisible();
+  await expect(reader.getByRole('button', { name: 'Add activity' })).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: /Edit Museum tour/ })).toHaveCount(0);
   await reader.close();
 });

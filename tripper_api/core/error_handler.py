@@ -15,6 +15,10 @@ from tripper_api.trip.trip_errors import (
     DailyPlanOccupiedError,
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
+    TimelineCollectionRevisionConflictError,
+    TimelineEntryNotFoundError,
+    TimelineEntryRevisionConflictError,
+    TimelineOrderInvalidError,
     TripDateRangeExcludesPlansError,
     TripDestinationInUseError,
     TripDestinationMismatchError,
@@ -168,6 +172,50 @@ def register_error_handlers(app: FastAPI) -> None:
             "daily_plan_revision_conflict",
             "This Daily plan changed after editing started",
             latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(TimelineEntryNotFoundError)
+    async def timeline_entry_not_found(
+        request: Request, exc: TimelineEntryNotFoundError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(
+            404, "timeline_entry_not_found", "Timeline entry not found"
+        )
+
+    @app.exception_handler(TimelineEntryRevisionConflictError)
+    async def timeline_entry_revision_conflict(
+        request: Request, exc: TimelineEntryRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            409,
+            "timeline_entry_revision_conflict",
+            "This Timeline entry changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(TimelineCollectionRevisionConflictError)
+    async def timeline_collection_revision_conflict(
+        request: Request, exc: TimelineCollectionRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            409,
+            "timeline_collection_revision_conflict",
+            "This Timeline changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(TimelineOrderInvalidError)
+    async def timeline_order_invalid(
+        request: Request, exc: TimelineOrderInvalidError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(
+            422,
+            "timeline_order_invalid",
+            "Timeline order must contain every entry in chronological order",
         )
 
     @app.exception_handler(Exception)

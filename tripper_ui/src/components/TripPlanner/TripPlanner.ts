@@ -2,21 +2,30 @@ import "./TripPlanner.css";
 import {
   ApiError,
   clearDailyPlan,
+  createTimelineEntry,
+  deleteTimelineEntry,
   loadParticipantTrip,
   moveDailyPlan,
+  moveTimelineEntry,
+  reorderTimelineEntries,
   updateTripDetails,
+  updateTimelineEntry,
   writeDailyPlan,
+  type TimelineEntryDetail,
   type TripDetail,
   type TripDetailsUpdate,
 } from "../../lib/trips";
 import { loadCurrentAccount, renderGoogleSignIn } from "../../lib/auth";
 import {
   clearDailyPlanDrafts,
+  clearTimelineEntryDrafts,
   dailyPlanDraftKey,
   dailyPlanDraftPrefix,
   clearTripDetailsDrafts,
   tripDetailsDraftKey,
   tripDetailsDraftPrefix,
+  timelineEntryDraftKey,
+  timelineEntryDraftPrefix,
 } from "../../lib/drafts";
 
 type WorkspaceSection = "plan" | "details" | "people" | "publish";
@@ -46,6 +55,44 @@ interface DailyPlanDraft {
   summary: string;
   background_image: string;
   starting_revision: number;
+}
+
+interface TimelineEntryDraft {
+  id?: string;
+  plan_id: string;
+  starting_revision: number;
+  collection_revision: number;
+  destination_id: string;
+  time: string;
+  title: string;
+  description: string;
+  location_name: string;
+}
+
+function recoveredTimelineDraft(
+  accountId: string,
+  trip: TripDetail,
+): TimelineEntryDraft | undefined {
+  const prefix = timelineEntryDraftPrefix(accountId, trip.id);
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    try {
+      const value = JSON.parse(sessionStorage.getItem(key) || "") as TimelineEntryDraft;
+      const plan = trip.daily_plans.find(({ id }) => id === value.plan_id);
+      const entry = plan?.timeline.find(({ id }) => id === value.id);
+      const revisionMatches = value.id
+        ? entry?.revision === value.starting_revision
+        : plan?.timeline_revision === value.starting_revision;
+      if (plan && revisionMatches && typeof value.title === "string" && typeof value.time === "string") {
+        return value;
+      }
+    } catch {
+      // Invalid or stale drafts are removed below.
+    }
+    sessionStorage.removeItem(key);
+  }
+  return undefined;
 }
 
 function dailyPlanDraft(trip: TripDetail, date: string): DailyPlanDraft {
@@ -216,13 +263,20 @@ function renderEditorWorkspace(
   let trip = initialTrip;
   const recovered = recoveredDetailsDraft(accountId, trip.id, trip.revision);
   const recoveredPlan = recoveredDailyPlanDraft(accountId, trip);
+  const recoveredTimeline = recoveredTimelineDraft(accountId, trip);
   if (recovered && recoveredPlan) clearDailyPlanDrafts(trip.id);
+  if ((recovered || recoveredPlan) && recoveredTimeline) clearTimelineEntryDrafts(trip.id);
   let startingRevision = recovered?.starting_revision ?? trip.revision;
   let draftStorageKey =
     recovered?.key ?? tripDetailsDraftKey(accountId, trip.id, startingRevision);
   let draft = recovered?.draft ?? detailsDraft(trip);
-  let planDraft = recoveredPlan ?? dailyPlanDraft(trip, trip.calendar[0]?.date ?? trip.start_date);
-  let dirty = recovered !== undefined || recoveredPlan !== undefined;
+  let timelineDraft = recovered || recoveredPlan ? undefined : recoveredTimeline;
+  const recoveredTimelinePlan = trip.daily_plans.find(({ id }) => id === timelineDraft?.plan_id);
+  let planDraft = recoveredPlan ?? dailyPlanDraft(
+    trip,
+    recoveredTimelinePlan?.date ?? trip.calendar[0]?.date ?? trip.start_date,
+  );
+  let dirty = recovered !== undefined || recoveredPlan !== undefined || timelineDraft !== undefined;
   let activeSection: WorkspaceSection = recovered ? "details" : "plan";
   let saveCurrentForm: (() => Promise<boolean>) | undefined;
 
@@ -230,11 +284,31 @@ function renderEditorWorkspace(
     accountId, trip.id, planDraft.date, planDraft.starting_revision,
   );
   const clearDraft = (): void => sessionStorage.removeItem(
-    activeSection === "plan" ? planStorageKey() : draftStorageKey,
+    timelineDraft
+      ? timelineEntryDraftKey(
+          accountId,
+          trip.id,
+          timelineDraft.plan_id,
+          timelineDraft.id,
+          timelineDraft.starting_revision,
+        )
+      : activeSection === "plan" ? planStorageKey() : draftStorageKey,
   );
   const persistDraft = (): void => {
     if (!dirty) return;
-    if (activeSection === "plan") sessionStorage.setItem(planStorageKey(), JSON.stringify(planDraft));
+    if (timelineDraft) {
+      clearTimelineEntryDrafts(trip.id);
+      sessionStorage.setItem(
+        timelineEntryDraftKey(
+          accountId,
+          trip.id,
+          timelineDraft.plan_id,
+          timelineDraft.id,
+          timelineDraft.starting_revision,
+        ),
+        JSON.stringify(timelineDraft),
+      );
+    } else if (activeSection === "plan") sessionStorage.setItem(planStorageKey(), JSON.stringify(planDraft));
     else sessionStorage.setItem(draftStorageKey, JSON.stringify(draft));
   };
 
@@ -309,6 +383,7 @@ function renderEditorWorkspace(
     clearDraft();
     draft = detailsDraft(trip);
     planDraft = dailyPlanDraft(trip, planDraft.date);
+    timelineDraft = undefined;
     dirty = false;
     refreshPreview();
     navigationDialog.close();
@@ -346,6 +421,11 @@ function renderEditorWorkspace(
       const dayPreview = document.createElement("p");
       dayPreview.textContent = `${formatDateLabel(planDraft.date)} · ${planDraft.title || "No day title"} · ${planDraft.summary}`;
       preview.appendChild(dayPreview);
+      if (timelineDraft) {
+        const activityPreview = document.createElement("p");
+        activityPreview.textContent = `${timelineDraft.time || "No time"} · ${timelineDraft.title || "No activity title"} · ${timelineDraft.description}`;
+        preview.appendChild(activityPreview);
+      }
     }
   };
 
@@ -607,6 +687,406 @@ function renderEditorWorkspace(
         showPlanConflict(trip);
       }
       if (current) {
+        const timeline = document.createElement("section");
+        timeline.className = "timeline-editor";
+        const timelineHeader = document.createElement("div");
+        timelineHeader.className = "timeline-editor__header";
+        const timelineTitle = document.createElement("h3");
+        timelineTitle.textContent = "Timeline";
+        const addActivity = document.createElement("button");
+        addActivity.type = "button";
+        addActivity.textContent = "Add activity";
+        addActivity.hidden = timelineDraft !== undefined;
+        addActivity.addEventListener("click", () => {
+          if (dirty) {
+            validation.textContent = "Save or Cancel your day changes before editing activities.";
+            return;
+          }
+          timelineDraft = {
+            plan_id: current.id,
+            starting_revision: current.timeline_revision,
+            collection_revision: current.timeline_revision,
+            destination_id: "",
+            time: "",
+            title: "",
+            description: "",
+            location_name: "",
+          };
+          dirty = false;
+          renderEditor();
+        });
+        timelineHeader.append(timelineTitle, addActivity);
+        timeline.appendChild(timelineHeader);
+
+        const showTimelineError = (error: unknown): void => {
+          if (error instanceof ApiError && error.latest_values) trip = error.latest_values;
+          validation.textContent = error instanceof Error
+            ? `${error.message} Your activity values are still here.`
+            : "Could not save the activity. Your values are still here.";
+        };
+
+        const renderActivityForm = (entry?: TimelineEntryDetail): HTMLElement => {
+          if (!timelineDraft) throw new Error("Timeline draft is required");
+          const activityDraft = timelineDraft;
+          const activityForm = document.createElement("form");
+          activityForm.className = "timeline-editor__form";
+          activityForm.noValidate = true;
+          const activityHeading = document.createElement("h4");
+          activityHeading.textContent = entry ? "Edit activity" : "Add activity";
+          const activityError = document.createElement("p");
+          activityError.className = "trip-details-form__field-error";
+          activityError.setAttribute("role", "alert");
+          const activityField = (labelText: string, value: string, type = "text"): [HTMLLabelElement, HTMLInputElement] => {
+            const label = document.createElement("label");
+            label.textContent = labelText;
+            const input = document.createElement("input");
+            input.type = type;
+            input.value = value;
+            label.appendChild(input);
+            return [label, input];
+          };
+          const [timeLabel, timeInput] = activityField("Activity time", activityDraft.time, "time");
+          timeInput.required = true;
+          const [titleLabel, titleInput] = activityField("Activity title", activityDraft.title);
+          titleInput.required = true;
+          const descriptionLabel = document.createElement("label");
+          descriptionLabel.textContent = "Activity description";
+          const descriptionInput = document.createElement("textarea");
+          descriptionInput.rows = 3;
+          descriptionInput.value = activityDraft.description;
+          descriptionLabel.appendChild(descriptionInput);
+          const [placeLabel, placeInput] = activityField("Activity place", activityDraft.location_name);
+          const destinationLabel = document.createElement("label");
+          destinationLabel.textContent = "Activity destination";
+          const destinationInput = document.createElement("select");
+          const primaryOption = document.createElement("option");
+          primaryOption.value = "";
+          primaryOption.textContent = `Use primary destination (${trip.destinations.find(({ id }) => id === current.destination_id)?.timezone ?? trip.timezone})`;
+          destinationInput.appendChild(primaryOption);
+          for (const item of trip.destinations) {
+            const option = document.createElement("option");
+            option.value = item.id;
+            option.textContent = `${item.name} (${item.timezone})`;
+            destinationInput.appendChild(option);
+          }
+          destinationInput.value = activityDraft.destination_id;
+          destinationLabel.appendChild(destinationInput);
+          const persistActivityInput = (): void => {
+            activityDraft.time = timeInput.value;
+            activityDraft.title = titleInput.value;
+            activityDraft.description = descriptionInput.value;
+            activityDraft.location_name = placeInput.value;
+            activityDraft.destination_id = destinationInput.value;
+            dirty = true;
+            persistDraft();
+            refreshPreview();
+          };
+          for (const input of [timeInput, titleInput, descriptionInput, placeInput, destinationInput]) {
+            input.addEventListener("input", persistActivityInput);
+            input.addEventListener("change", persistActivityInput);
+          }
+          const activityActions = document.createElement("div");
+          activityActions.className = "timeline-editor__form-actions";
+          const cancelActivity = document.createElement("button");
+          cancelActivity.type = "button";
+          cancelActivity.textContent = "Cancel activity";
+          cancelActivity.addEventListener("click", () => {
+            clearDraft();
+            timelineDraft = undefined;
+            dirty = false;
+            refreshPreview();
+            renderEditor();
+          });
+          const saveActivity = document.createElement("button");
+          saveActivity.type = "submit";
+          saveActivity.textContent = "Save activity";
+          activityActions.append(cancelActivity, saveActivity);
+          activityForm.append(
+            activityHeading,
+            activityError,
+            timeLabel,
+            titleLabel,
+            descriptionLabel,
+            placeLabel,
+            destinationLabel,
+            activityActions,
+          );
+          const makeActivityReadOnly = (): void => {
+            clearTimelineEntryDrafts(trip.id);
+            activityForm.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+              "input, textarea",
+            ).forEach((input) => (input.readOnly = true));
+            activityForm.querySelectorAll<HTMLSelectElement>("select")
+              .forEach((input) => (input.disabled = true));
+            editor.querySelectorAll<HTMLButtonElement>("button")
+              .forEach((button) => (button.disabled = true));
+            saveActivity.disabled = true;
+          };
+          const showActivityConflict = (latestTrip: TripDetail): void => {
+            activityForm.querySelector(".trip-details-form__conflict")?.remove();
+            const latestPlan = latestTrip.daily_plans.find(({ id }) => id === current.id);
+            const latestEntry = latestPlan?.timeline.find(({ id }) => id === activityDraft.id);
+            const conflict = document.createElement("section");
+            conflict.className = "trip-details-form__conflict";
+            const conflictTitle = document.createElement("h5");
+            conflictTitle.textContent = "Latest saved activity";
+            const latestValues = document.createElement("dl");
+            for (const [label, value] of [
+              ["Time", latestEntry?.time.slice(0, 5) ?? "Not saved"],
+              ["Title", latestEntry?.title ?? "Not saved"],
+              ["Description", latestEntry?.description || "None"],
+              ["Place", latestEntry?.location_name || "None"],
+            ]) {
+              const term = document.createElement("dt");
+              term.textContent = label;
+              const detail = document.createElement("dd");
+              detail.textContent = value;
+              latestValues.append(term, detail);
+            }
+            const conflictActions = document.createElement("div");
+            conflictActions.className = "trip-details-form__conflict-actions";
+            const reload = document.createElement("button");
+            reload.type = "button";
+            reload.textContent = "Reload latest activity";
+            reload.addEventListener("click", () => {
+              clearDraft();
+              timelineDraft = undefined;
+              dirty = false;
+              trip = latestTrip;
+              refreshPreview();
+              renderEditor();
+            });
+            const reapply = document.createElement("button");
+            reapply.type = "button";
+            reapply.textContent = "Reapply my activity";
+            reapply.addEventListener("click", () => {
+              trip = latestTrip;
+              activityDraft.starting_revision = activityDraft.id
+                ? latestEntry?.revision ?? activityDraft.starting_revision
+                : latestPlan?.timeline_revision ?? activityDraft.starting_revision;
+              activityDraft.collection_revision =
+                latestPlan?.timeline_revision ?? activityDraft.collection_revision;
+              dirty = true;
+              persistDraft();
+              conflict.remove();
+              activityError.textContent = "Review your retained values, then retry Save activity.";
+              saveActivity.disabled = false;
+            });
+            conflictActions.append(reload, reapply);
+            conflict.append(conflictTitle, latestValues, conflictActions);
+            activityForm.insertBefore(conflict, activityActions);
+            saveActivity.disabled = true;
+          };
+          const saveTimelineEntry = async (): Promise<boolean> => {
+            activityError.textContent = "";
+            if (!timeInput.value) {
+              activityError.textContent = "Enter a valid local time.";
+              timeInput.focus();
+              return false;
+            }
+            if (!titleInput.value.trim()) {
+              activityError.textContent = "Enter an activity title.";
+              titleInput.focus();
+              return false;
+            }
+            saveActivity.disabled = true;
+            const values = {
+              destination_id: destinationInput.value || null,
+              time: timeInput.value,
+              title: titleInput.value,
+              description: descriptionInput.value,
+              location_name: placeInput.value || null,
+            };
+            const request = activityDraft.id
+              ? updateTimelineEntry(
+                  trip.id,
+                  current.id,
+                  activityDraft.id,
+                  activityDraft.starting_revision,
+                  values,
+                )
+              : createTimelineEntry(
+                  trip.id,
+                  current.id,
+                  activityDraft.starting_revision,
+                  values,
+                );
+            try {
+              const updated = await request;
+              clearDraft();
+              trip = updated;
+              timelineDraft = undefined;
+              dirty = false;
+              refreshPreview();
+              window.setTimeout(renderEditor, 0);
+              return true;
+            } catch (error) {
+              showTimelineError(error);
+              activityError.textContent = error instanceof Error ? error.message : "Could not save activity.";
+              if (error instanceof ApiError && error.status === 409 && error.latest_values) {
+                showActivityConflict(error.latest_values);
+                return false;
+              } else if (error instanceof ApiError && error.status === 403) {
+                makeActivityReadOnly();
+                activityError.textContent = "Your editing permission changed. Your values remain available to copy.";
+                return false;
+              } else if (error instanceof ApiError && error.status === 401) {
+                const signIn = document.createElement("div");
+                activityForm.insertBefore(signIn, activityActions);
+                activityError.textContent = "Your Session expired. Sign in again to retry with these values.";
+                void renderGoogleSignIn(signIn, () => {
+                  void (async () => {
+                    const account = await loadCurrentAccount();
+                    if (account.id !== accountId) {
+                      clearTimelineEntryDrafts();
+                      window.location.assign("/tripper/my-trips");
+                      return;
+                    }
+                    const latestTrip = await loadParticipantTrip(trip.id);
+                    if (latestTrip.role === "traveller") {
+                      makeActivityReadOnly();
+                      activityError.textContent = "Your editing permission changed. Your values remain available to copy.";
+                      return;
+                    }
+                    trip = latestTrip;
+                    const latestPlan = latestTrip.daily_plans.find(({ id }) => id === current.id);
+                    const latestEntry = latestPlan?.timeline.find(({ id }) => id === activityDraft.id);
+                    const revisionMatches = activityDraft.id
+                      ? latestEntry?.revision === activityDraft.starting_revision
+                      : latestPlan?.timeline_revision === activityDraft.starting_revision;
+                    if (!revisionMatches) {
+                      activityError.textContent = "This Timeline changed while your Session was expired.";
+                      showActivityConflict(latestTrip);
+                      signIn.remove();
+                      return;
+                    }
+                    activityError.textContent = "Signed in again. Retry Save activity when ready.";
+                    saveActivity.disabled = false;
+                    signIn.remove();
+                  })().catch(() => {
+                    activityError.textContent = "Could not restore your Session. Your values are still here.";
+                  });
+                });
+                return false;
+              }
+              saveActivity.disabled = false;
+              return false;
+            }
+          };
+          saveCurrentForm = saveTimelineEntry;
+          activityForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            void saveTimelineEntry();
+          });
+          return activityForm;
+        };
+
+        if (timelineDraft && timelineDraft.plan_id === current.id) {
+          const entry = timelineDraft.id
+            ? current.timeline.find(({ id }) => id === timelineDraft?.id)
+            : undefined;
+          timeline.appendChild(renderActivityForm(entry));
+        }
+        const list = document.createElement("ol");
+        list.className = "timeline-editor__list";
+        current.timeline.forEach((entry, index) => {
+          const item = document.createElement("li");
+          item.className = "timeline-editor__item";
+          const activitySummary = document.createElement("div");
+          const activityName = document.createElement("strong");
+          activityName.textContent = entry.title;
+          const activityTime = document.createElement("span");
+          activityTime.textContent = `${entry.time.slice(0, 5)} · ${entry.timezone}`;
+          activitySummary.append(activityName, activityTime);
+          const activityControls = document.createElement("div");
+          activityControls.className = "timeline-editor__controls";
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.textContent = "Edit";
+          edit.setAttribute("aria-label", `Edit ${entry.title}`);
+          edit.addEventListener("click", () => {
+            timelineDraft = {
+              id: entry.id,
+              plan_id: current.id,
+              starting_revision: entry.revision,
+              collection_revision: current.timeline_revision,
+              destination_id: entry.destination_id ?? "",
+              time: entry.time.slice(0, 5),
+              title: entry.title,
+              description: entry.description,
+              location_name: entry.location_name ?? "",
+            };
+            dirty = false;
+            renderEditor();
+          });
+          const up = document.createElement("button");
+          up.type = "button";
+          up.textContent = "Up";
+          up.setAttribute("aria-label", `Move ${entry.title} up`);
+          up.disabled = index === 0 || current.timeline[index - 1]?.time !== entry.time;
+          const down = document.createElement("button");
+          down.type = "button";
+          down.textContent = "Down";
+          down.setAttribute("aria-label", `Move ${entry.title} down`);
+          down.disabled = index === current.timeline.length - 1 || current.timeline[index + 1]?.time !== entry.time;
+          const reorder = (offset: number): void => {
+            const ids = current.timeline.map(({ id }) => id);
+            [ids[index], ids[index + offset]] = [ids[index + offset], ids[index]];
+            void reorderTimelineEntries(trip.id, current.id, current.timeline_revision, ids)
+              .then((updated) => { trip = updated; renderEditor(); refreshPreview(); })
+              .catch(showTimelineError);
+          };
+          up.addEventListener("click", () => reorder(-1));
+          down.addEventListener("click", () => reorder(1));
+          const moveLabel = document.createElement("label");
+          moveLabel.textContent = "Move to date";
+          const moveSelect = document.createElement("select");
+          moveSelect.setAttribute("aria-label", `Move ${entry.title} to date`);
+          for (const targetPlan of trip.daily_plans.filter(({ id }) => id !== current.id)) {
+            const option = document.createElement("option");
+            option.value = targetPlan.date;
+            option.textContent = formatDateLabel(targetPlan.date);
+            moveSelect.appendChild(option);
+          }
+          moveLabel.appendChild(moveSelect);
+          const moveActivity = document.createElement("button");
+          moveActivity.type = "button";
+          moveActivity.textContent = "Move";
+          moveActivity.setAttribute("aria-label", `Move ${entry.title}`);
+          moveActivity.disabled = moveSelect.options.length === 0;
+          moveActivity.addEventListener("click", () => {
+            const targetPlan = trip.daily_plans.find(({ date }) => date === moveSelect.value);
+            if (!targetPlan) return;
+            void moveTimelineEntry(
+              trip.id,
+              current.id,
+              entry.id,
+              current.timeline_revision,
+              targetPlan.id,
+              targetPlan.timeline_revision,
+            ).then((updated) => { trip = updated; renderEditor(); refreshPreview(); })
+              .catch(showTimelineError);
+          });
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "Remove";
+          remove.setAttribute("aria-label", `Remove ${entry.title}`);
+          remove.addEventListener("click", () => {
+            void deleteTimelineEntry(
+              trip.id, current.id, entry.id, entry.revision, current.timeline_revision,
+            ).then((updated) => { trip = updated; renderEditor(); refreshPreview(); })
+              .catch(showTimelineError);
+          });
+          activityControls.append(edit, up, down, moveLabel, moveActivity, remove);
+          item.append(activitySummary, activityControls);
+          list.appendChild(item);
+        });
+        list.hidden = timelineDraft !== undefined;
+        timeline.appendChild(list);
+        editor.appendChild(timeline);
+        form.hidden = timelineDraft !== undefined;
+      }
+      if (current && !timelineDraft) {
         const move = document.createElement("label");
         move.textContent = "Move complete plan to";
         const target = document.createElement("select");

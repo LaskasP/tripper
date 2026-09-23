@@ -1,4 +1,5 @@
-from datetime import date, time
+from datetime import date
+from datetime import time as LocalTime
 from urllib.parse import urlparse
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -22,6 +23,12 @@ def _iana_timezone(value: str) -> str:
     except ZoneInfoNotFoundError as error:
         raise ValueError("timezone must be a valid IANA timezone") from error
     return stripped
+
+
+def _local_time(value: LocalTime) -> LocalTime:
+    if value.tzinfo is not None:
+        raise ValueError("time must be a local time without an offset")
+    return value
 
 
 class LocationInput(BaseModel):
@@ -142,7 +149,12 @@ class DestinationDetailsResponse(BaseModel):
 
 
 class TimelineEntryResponse(BaseModel):
-    time: time
+    id: UUID
+    destination_id: UUID | None
+    revision: int
+    position: int
+    time: LocalTime
+    timezone: str
     title: str
     description: str
     location: LocationInput | None
@@ -153,8 +165,8 @@ class StayResponse(BaseModel):
     name: str
     address: str
     location: LocationInput | None
-    check_in: time | None
-    check_out: time | None
+    check_in: LocalTime | None
+    check_out: LocalTime | None
     public_listing_url: str | None
     booking_platform: str | None
 
@@ -168,6 +180,7 @@ class DailyPlanResponse(BaseModel):
     id: UUID
     destination_id: UUID
     revision: int
+    timeline_revision: int
     date: date
     day_number: int
     title: str
@@ -227,3 +240,61 @@ class DailyPlanRevisionRequest(BaseModel):
 
 class DailyPlanMoveRequest(DailyPlanRevisionRequest):
     target_date: date
+
+
+class TimelineEntryFields(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    destination_id: UUID | None = None
+    time: LocalTime
+    title: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    location_name: str | None = Field(default=None, max_length=300)
+    location: LocationInput | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_nonblank_title(cls, value: str) -> str:
+        return _nonblank(value)
+
+    @field_validator("time")
+    @classmethod
+    def validate_local_time(cls, value: LocalTime) -> LocalTime:
+        return _local_time(value)
+
+
+class TimelineEntryCreateRequest(TimelineEntryFields):
+    starting_revision: int = Field(ge=1)
+
+
+class TimelineEntryUpdateRequest(TimelineEntryFields):
+    starting_revision: int = Field(ge=1)
+
+
+class TimelineEntryDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    starting_revision: int = Field(ge=1)
+    starting_collection_revision: int = Field(ge=1)
+
+
+class TimelineReorderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    starting_revision: int = Field(ge=1)
+    entry_ids: list[UUID]
+
+    @field_validator("entry_ids")
+    @classmethod
+    def validate_unique_entry_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("entry_ids must be unique")
+        return value
+
+
+class TimelineEntryMoveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_starting_revision: int = Field(ge=1)
+    target_plan_id: UUID
+    target_starting_revision: int = Field(ge=1)

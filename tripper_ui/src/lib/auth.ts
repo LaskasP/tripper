@@ -1,7 +1,9 @@
 import {
   clearDailyPlanDrafts,
+  clearTimelineEntryDrafts,
   clearTripDetailsDrafts,
   prepareDailyPlanDraftsForAccount,
+  prepareTimelineEntryDraftsForAccount,
   prepareTripDetailsDraftsForAccount,
 } from "./drafts";
 
@@ -88,6 +90,7 @@ export async function signOut(): Promise<void> {
   if (!response.ok) throw new Error("Sign out failed.");
   clearTripDetailsDrafts();
   clearDailyPlanDrafts();
+  clearTimelineEntryDrafts();
 }
 
 export interface CurrentAccount {
@@ -102,6 +105,7 @@ export async function loadCurrentAccount(): Promise<CurrentAccount> {
   const session = (await response.json()) as { account: CurrentAccount };
   prepareTripDetailsDraftsForAccount(session.account.id);
   prepareDailyPlanDraftsForAccount(session.account.id);
+  prepareTimelineEntryDraftsForAccount(session.account.id);
   return session.account;
 }
 

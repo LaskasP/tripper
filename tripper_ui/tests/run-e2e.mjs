@@ -29,7 +29,7 @@ function run(command, args) {
 }
 
 run('docker', ['compose', '-f', 'compose.test.yml', 'up', '-d', '--wait']);
-run('python', ['-m', 'uv', 'run', 'alembic', 'upgrade', 'head']);
+run(python, ['-m', 'alembic', 'upgrade', 'head']);
 
 const api = spawn(
   python,
