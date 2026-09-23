@@ -99,7 +99,9 @@ class TripMembership(Base):
         PostgresUUID(as_uuid=True), primary_key=True, default=uuid4
     )
     trip_id: Mapped[UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"))
-    account_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True))
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("accounts.id", name="fk_membership_account")
+    )
     role: Mapped[TripRole] = mapped_column(
         SqlEnum(
             TripRole,

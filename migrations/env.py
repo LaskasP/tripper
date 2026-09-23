@@ -6,15 +6,12 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from migrations.model_metadata import target_metadata
 from tripper_api.core.config import Settings
-from tripper_api.core.models import Base
-from tripper_api.trip import trip_model  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
-
-target_metadata = Base.metadata
 
 
 def database_url() -> str:
