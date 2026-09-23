@@ -323,8 +323,9 @@ test('older-revision draft is recovered and compared with latest saved values', 
 
   await expect(page.getByLabel('Trip name')).toHaveValue('Recovered local work');
   await expect(page.getByText('Unsaved preview')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Latest saved values' })).toBeVisible();
-  await expect(page.getByText('Saved elsewhere')).toBeVisible();
+  const conflict = page.locator('.trip-details-form__conflict');
+  await expect(conflict.getByRole('heading', { name: 'Latest saved values' })).toBeVisible();
+  await expect(conflict).toContainText('Saved elsewhere');
 });
 
 test('permission loss keeps values copyable but clears their recoverable draft', async ({ page }) => {
