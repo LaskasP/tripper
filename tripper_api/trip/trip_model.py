@@ -123,6 +123,9 @@ class DailyPlan(Base):
         CheckConstraint(
             "timeline_revision > 0", name="positive_timeline_collection_revision"
         ),
+        CheckConstraint(
+            "photo_revision > 0", name="positive_photo_collection_revision"
+        ),
         UniqueConstraint("trip_id", "date", name="uq_daily_plan_trip_date"),
     )
 
@@ -137,6 +140,7 @@ class DailyPlan(Base):
     background_image: Mapped[str] = mapped_column(Text)
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
     timeline_revision: Mapped[int] = mapped_column(Integer, server_default="1")
+    photo_revision: Mapped[int] = mapped_column(Integer, server_default="1")
 
 
 class TimelineEntry(Base):

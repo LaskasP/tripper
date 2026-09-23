@@ -1,6 +1,7 @@
 const TRIP_DETAILS_DRAFT_PREFIX = "tripper:draft:trip_details:";
 const DAILY_PLAN_DRAFT_PREFIX = "tripper:draft:daily_plan:";
 const TIMELINE_ENTRY_DRAFT_PREFIX = "tripper:draft:timeline_entry:";
+const PHOTO_DRAFT_PREFIX = "tripper:draft:photo:";
 
 export function dailyPlanDraftPrefix(accountId: string, tripId: string): string {
   return `${DAILY_PLAN_DRAFT_PREFIX}${accountId}:${tripId}:`;
@@ -62,6 +63,41 @@ export function clearTimelineEntryDrafts(tripId?: string): void {
     const key = sessionStorage.key(index);
     if (
       key?.startsWith(TIMELINE_ENTRY_DRAFT_PREFIX) &&
+      (tripId === undefined || key.split(":")[4] === tripId)
+    ) keys.push(key);
+  }
+  keys.forEach((key) => sessionStorage.removeItem(key));
+}
+
+export function photoDraftPrefix(accountId: string, tripId: string): string {
+  return `${PHOTO_DRAFT_PREFIX}${accountId}:${tripId}:`;
+}
+
+export function photoDraftKey(
+  accountId: string,
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+): string {
+  return `${photoDraftPrefix(accountId, tripId)}${planId}:${startingRevision}`;
+}
+
+export function preparePhotoDraftsForAccount(accountId: string): void {
+  const accountPrefix = `${PHOTO_DRAFT_PREFIX}${accountId}:`;
+  const keys: string[] = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (key?.startsWith(PHOTO_DRAFT_PREFIX) && !key.startsWith(accountPrefix)) keys.push(key);
+  }
+  keys.forEach((key) => sessionStorage.removeItem(key));
+}
+
+export function clearPhotoDrafts(tripId?: string): void {
+  const keys: string[] = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (
+      key?.startsWith(PHOTO_DRAFT_PREFIX) &&
       (tripId === undefined || key.split(":")[4] === tripId)
     ) keys.push(key);
   }

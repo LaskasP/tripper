@@ -1,9 +1,11 @@
 import {
   clearDailyPlanDrafts,
+  clearPhotoDrafts,
   clearTimelineEntryDrafts,
   clearTripDetailsDrafts,
   prepareDailyPlanDraftsForAccount,
   prepareTimelineEntryDraftsForAccount,
+  preparePhotoDraftsForAccount,
   prepareTripDetailsDraftsForAccount,
 } from "./drafts";
 
@@ -91,6 +93,7 @@ export async function signOut(): Promise<void> {
   clearTripDetailsDrafts();
   clearDailyPlanDrafts();
   clearTimelineEntryDrafts();
+  clearPhotoDrafts();
 }
 
 export interface CurrentAccount {
@@ -106,6 +109,7 @@ export async function loadCurrentAccount(): Promise<CurrentAccount> {
   prepareTripDetailsDraftsForAccount(session.account.id);
   prepareDailyPlanDraftsForAccount(session.account.id);
   prepareTimelineEntryDraftsForAccount(session.account.id);
+  preparePhotoDraftsForAccount(session.account.id);
   return session.account;
 }
 

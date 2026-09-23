@@ -251,6 +251,65 @@
   display: none;
 }
 
+.photo-editor {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
+}
+
+.photo-editor__form {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.photo-editor__preview {
+  width: min(100%, 28rem);
+  max-height: 14rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.photo-editor__preview[hidden] {
+  display: none;
+}
+
+.photo-editor__list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.photo-editor__item {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+.photo-editor__item img {
+  width: 5rem;
+  height: 4rem;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.photo-editor__item .timeline-editor__controls {
+  grid-column: 1 / -1;
+}
+
+.photo-editor__error {
+  color: #ffb4a8;
+}
+
 .trip-details-form__dates,
 .trip-details-form__coordinates {
   display: grid;

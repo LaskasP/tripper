@@ -43,6 +43,37 @@ export interface TimelineEntryWrite {
   location?: { lat: number; lng: number } | null;
 }
 
+export interface PhotoDetail {
+  id: string;
+  position: number;
+  url: string;
+  caption: string;
+}
+
+export interface StayDetail {
+  id: string;
+  revision: number;
+  name: string;
+  address: string;
+  location: { lat: number; lng: number } | null;
+  check_in: string | null;
+  check_out: string | null;
+  public_listing_url: string | null;
+  booking_platform: "booking.com" | "airbnb" | null;
+}
+
+export interface StayWrite {
+  id?: string;
+  starting_revision: number;
+  name: string;
+  address?: string;
+  location?: { lat: number; lng: number } | null;
+  check_in?: string | null;
+  check_out?: string | null;
+  public_listing_url?: string | null;
+  booking_platform?: "booking.com" | "airbnb" | null;
+}
+
 export interface TripDetail {
   id: string;
   revision: number;
@@ -74,22 +105,15 @@ export interface TripDetail {
     destination_id: string;
     revision: number;
     timeline_revision: number;
+    photo_revision: number;
     date: string;
     day_number: number;
     title: string;
     summary: string;
     background_image: string;
-    stay: {
-      name: string;
-      address: string;
-      location: { lat: number; lng: number } | null;
-      check_in: string | null;
-      check_out: string | null;
-      public_listing_url: string | null;
-      booking_platform: "booking.com" | "airbnb" | null;
-    } | null;
+    stay: StayDetail | null;
     timeline: TimelineEntryDetail[];
-    photos: Array<{ url: string; caption: string }>;
+    photos: PhotoDetail[];
   }>;
   roster: Array<{
     display_name: string;
@@ -220,6 +244,31 @@ export function moveDailyPlan(
   );
 }
 
+export function writeStay(
+  tripId: string,
+  planId: string,
+  stay: StayWrite,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
+    { method: "PUT", body: JSON.stringify(stay) },
+  );
+}
+
+export function clearStay(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
+}
+
 export function createTimelineEntry(
   tripId: string,
   planId: string,
@@ -295,6 +344,55 @@ export function moveTimelineEntry(
         source_starting_revision: sourceStartingRevision,
         target_plan_id: targetPlanId,
         target_starting_revision: targetStartingRevision,
+      }),
+    },
+  );
+}
+
+export function createPhoto(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  url: string,
+  caption: string,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos`,
+    {
+      method: "POST",
+      body: JSON.stringify({ starting_revision: startingRevision, url, caption }),
+    },
+  );
+}
+
+export function deletePhoto(
+  tripId: string,
+  planId: string,
+  photoId: string,
+  startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos/${encodeURIComponent(photoId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
+}
+
+export function reorderPhotos(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  photoIds: string[],
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos/reorder`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        starting_revision: startingRevision,
+        photo_ids: photoIds,
       }),
     },
   );
