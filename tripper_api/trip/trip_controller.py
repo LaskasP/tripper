@@ -42,7 +42,7 @@ async def list_my_trips(
     user: Annotated[AuthenticatedUser, Depends(require_current_user)],
     service: Annotated[TripService, Depends(get_trip_service)],
 ) -> list[TripSummaryResponse]:
-    trips = await service.list_for_account(user.id)
+    trips = await service.trip_list_for_account(user.id)
     return [TripSummaryResponse.model_validate(trip) for trip in trips]
 
 

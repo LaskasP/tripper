@@ -94,7 +94,9 @@ class TripService:
             role=membership.role,
         )
 
-    async def list_for_account(self, account_id: UUID) -> list[TripSummaryResponse]:
+    async def trip_list_for_account(
+        self, account_id: UUID
+    ) -> list[TripSummaryResponse]:
         async with self._session.begin():
             return await self._repository.list_for_account(account_id)
 
