@@ -668,6 +668,154 @@ async def test_timeline_writes_validate_local_fields_and_editor_permission(
     assert unchanged.json()["daily_plans"][0]["timeline"] == []
 
 
+async def test_editor_adds_reorders_and_removes_photos_with_stable_identities(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        with_plan = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = with_plan.json()["daily_plans"][0]
+        collection_path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/photos"
+        first = await client.post(
+            collection_path,
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "https://images.example/first.jpg",
+                "caption": "First view",
+            },
+        )
+        plan = first.json()["daily_plans"][0]
+        second = await client.post(
+            collection_path,
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "https://images.example/second.jpg",
+                "caption": "Second view",
+            },
+        )
+        plan = second.json()["daily_plans"][0]
+        original = plan["photos"]
+        reordered = await client.post(
+            f"{collection_path}/reorder",
+            json={
+                "starting_revision": plan["photo_revision"],
+                "photo_ids": [original[1]["id"], original[0]["id"]],
+            },
+        )
+        reordered_plan = reordered.json()["daily_plans"][0]
+        removed = await client.request(
+            "DELETE",
+            f"{collection_path}/{original[1]['id']}",
+            json={
+                "starting_revision": reordered_plan["photo_revision"],
+            },
+        )
+        stale_removal = await client.request(
+            "DELETE",
+            f"{collection_path}/{original[1]['id']}",
+            json={"starting_revision": reordered_plan["photo_revision"]},
+        )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert [photo["position"] for photo in original] == [0, 1]
+    assert len({photo["id"] for photo in original}) == 2
+    assert [photo["id"] for photo in reordered_plan["photos"]] == [
+        original[1]["id"],
+        original[0]["id"],
+    ]
+    assert [photo["position"] for photo in reordered_plan["photos"]] == [0, 1]
+    assert removed.status_code == 200
+    assert stale_removal.status_code == 409
+    assert stale_removal.json()["error"]["code"] == (
+        "photo_collection_revision_conflict"
+    )
+    assert [photo["id"] for photo in removed.json()["daily_plans"][0]["photos"]] == [
+        original[0]["id"]
+    ]
+
+
+async def test_photo_writes_reject_invalid_stale_and_unauthorized_changes_atomically(
+    database_settings: Settings,
+) -> None:
+    user = {"id": ALEX_ID}
+    async for client, _ in app_client(database_settings, user):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        with_plan = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = with_plan.json()["daily_plans"][0]
+        path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}/photos"
+        invalid = await client.post(
+            path,
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "http://images.example/insecure.jpg",
+                "caption": "Unsafe",
+            },
+        )
+        created = await client.post(
+            path,
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "https://images.example/safe.jpg",
+                "caption": "Safe",
+            },
+        )
+        stale = await client.post(
+            path,
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "https://images.example/stale.jpg",
+                "caption": "Stale",
+            },
+        )
+        await add_participant(
+            database_settings,
+            trip_id=trip_id,
+            account_id=JAMIE_ID,
+            display_name="Jamie Traveller",
+            role="traveller",
+        )
+        user["id"] = JAMIE_ID
+        forbidden = await client.post(
+            path,
+            json={
+                "starting_revision": created.json()["daily_plans"][0]["photo_revision"],
+                "url": "https://images.example/forbidden.jpg",
+                "caption": "Forbidden",
+            },
+        )
+        unchanged = await client.get(f"/api/trips/{trip_id}")
+
+    assert invalid.status_code == 422
+    assert created.status_code == 201
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "photo_collection_revision_conflict"
+    assert forbidden.status_code == 403
+    assert [photo["url"] for photo in unchanged.json()["daily_plans"][0]["photos"]] == [
+        "https://images.example/safe.jpg"
+    ]
+
+
 async def test_signed_in_user_creates_trip_and_finds_it_in_my_trips(
     database_settings: Settings,
 ) -> None:

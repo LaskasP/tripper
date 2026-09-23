@@ -47,6 +47,8 @@ class _StoredStay:
 
 @dataclass(frozen=True)
 class _StoredPhoto:
+    id: UUID
+    position: int
     url: str
     caption: str
 
@@ -57,6 +59,7 @@ class _StoredDailyPlan:
     destination_id: UUID
     revision: int
     timeline_revision: int
+    photo_revision: int
     date: date
     title: str
     summary: str
@@ -228,6 +231,7 @@ class TripRepository:
                         DailyPlan.destination_id,
                         DailyPlan.revision,
                         DailyPlan.timeline_revision,
+                        DailyPlan.photo_revision,
                         DailyPlan.date,
                         DailyPlan.title,
                         DailyPlan.summary,
@@ -246,6 +250,7 @@ class TripRepository:
             destination_id,
             revision,
             timeline_revision,
+            photo_revision,
             plan_date,
             title,
             summary,
@@ -298,7 +303,12 @@ class TripRepository:
             photo_rows = (
                 (
                     await self._session.execute(
-                        select(Photo.url, Photo.caption)
+                        select(
+                            Photo.id,
+                            Photo.position,
+                            Photo.url,
+                            Photo.caption,
+                        )
                         .where(Photo.daily_plan_id == plan_id)
                         .order_by(Photo.position, Photo.id)
                     )
@@ -312,6 +322,7 @@ class TripRepository:
                     destination_id=destination_id,
                     revision=revision,
                     timeline_revision=timeline_revision,
+                    photo_revision=photo_revision,
                     date=plan_date,
                     title=title,
                     summary=summary,
@@ -436,6 +447,45 @@ class TripRepository:
 
     def add_timeline_entry(self, entry: TimelineEntry) -> None:
         self._session.add(entry)
+
+    def add_photo(self, photo: Photo) -> None:
+        self._session.add(photo)
+
+    async def next_photo_position(self, daily_plan_id: UUID) -> int:
+        positions = await self._session.scalars(
+            select(Photo.position).where(Photo.daily_plan_id == daily_plan_id)
+        )
+        return max(positions.all(), default=-1) + 1
+
+    async def photo_by_id(self, daily_plan_id: UUID, photo_id: UUID) -> Photo | None:
+        result = await self._session.scalars(
+            select(Photo).where(
+                Photo.daily_plan_id == daily_plan_id,
+                Photo.id == photo_id,
+            )
+        )
+        return result.one_or_none()
+
+    async def delete_photo(self, photo: Photo) -> None:
+        await self._session.delete(photo)
+        await self._session.flush()
+
+    async def photos(self, daily_plan_id: UUID) -> list[Photo]:
+        result = await self._session.scalars(
+            select(Photo)
+            .where(Photo.daily_plan_id == daily_plan_id)
+            .order_by(Photo.position, Photo.id)
+        )
+        return list(result.all())
+
+    async def reorder_photos(self, current: list[Photo], ordered: list[Photo]) -> None:
+        offset = len(current) + 1
+        for photo in current:
+            photo.position += offset
+        await self._session.flush()
+        for position, photo in enumerate(ordered):
+            photo.position = position
+        await self._session.flush()
 
     async def next_timeline_position(self, daily_plan_id: UUID) -> int:
         positions = await self._session.scalars(

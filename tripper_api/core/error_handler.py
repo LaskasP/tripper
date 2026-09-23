@@ -15,6 +15,9 @@ from tripper_api.trip.trip_errors import (
     DailyPlanOccupiedError,
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
+    PhotoCollectionRevisionConflictError,
+    PhotoNotFoundError,
+    PhotoOrderInvalidError,
     TimelineCollectionRevisionConflictError,
     TimelineEntryNotFoundError,
     TimelineEntryRevisionConflictError,
@@ -216,6 +219,36 @@ def register_error_handlers(app: FastAPI) -> None:
             422,
             "timeline_order_invalid",
             "Timeline order must contain every entry in chronological order",
+        )
+
+    @app.exception_handler(PhotoNotFoundError)
+    async def photo_not_found(
+        request: Request, exc: PhotoNotFoundError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(404, "photo_not_found", "Photo not found")
+
+    @app.exception_handler(PhotoCollectionRevisionConflictError)
+    async def photo_collection_revision_conflict(
+        request: Request, exc: PhotoCollectionRevisionConflictError
+    ) -> JSONResponse:
+        del request
+        return error_response(
+            409,
+            "photo_collection_revision_conflict",
+            "These photos changed after editing started",
+            latest_values=exc.latest_values,
+        )
+
+    @app.exception_handler(PhotoOrderInvalidError)
+    async def photo_order_invalid(
+        request: Request, exc: PhotoOrderInvalidError
+    ) -> JSONResponse:
+        del request, exc
+        return error_response(
+            422,
+            "photo_order_invalid",
+            "Photo order must contain every photo exactly once",
         )
 
     @app.exception_handler(Exception)

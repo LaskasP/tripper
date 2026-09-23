@@ -43,6 +43,13 @@ export interface TimelineEntryWrite {
   location?: { lat: number; lng: number } | null;
 }
 
+export interface PhotoDetail {
+  id: string;
+  position: number;
+  url: string;
+  caption: string;
+}
+
 export interface TripDetail {
   id: string;
   revision: number;
@@ -74,6 +81,7 @@ export interface TripDetail {
     destination_id: string;
     revision: number;
     timeline_revision: number;
+    photo_revision: number;
     date: string;
     day_number: number;
     title: string;
@@ -89,7 +97,7 @@ export interface TripDetail {
       booking_platform: "booking.com" | "airbnb" | null;
     } | null;
     timeline: TimelineEntryDetail[];
-    photos: Array<{ url: string; caption: string }>;
+    photos: PhotoDetail[];
   }>;
   roster: Array<{
     display_name: string;
@@ -295,6 +303,55 @@ export function moveTimelineEntry(
         source_starting_revision: sourceStartingRevision,
         target_plan_id: targetPlanId,
         target_starting_revision: targetStartingRevision,
+      }),
+    },
+  );
+}
+
+export function createPhoto(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  url: string,
+  caption: string,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos`,
+    {
+      method: "POST",
+      body: JSON.stringify({ starting_revision: startingRevision, url, caption }),
+    },
+  );
+}
+
+export function deletePhoto(
+  tripId: string,
+  planId: string,
+  photoId: string,
+  startingRevision: number,
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos/${encodeURIComponent(photoId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
+}
+
+export function reorderPhotos(
+  tripId: string,
+  planId: string,
+  startingRevision: number,
+  photoIds: string[],
+): Promise<TripDetail> {
+  return apiRequest<TripDetail>(
+    `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/photos/reorder`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        starting_revision: startingRevision,
+        photo_ids: photoIds,
       }),
     },
   );

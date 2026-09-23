@@ -11,6 +11,9 @@ from tripper_api.trip.trip_dto import (
     DailyPlanWriteRequest,
     DestinationDetailsResponse,
     LocationInput,
+    PhotoCreateRequest,
+    PhotoDeleteRequest,
+    PhotoReorderRequest,
     PhotoResponse,
     StayResponse,
     TimelineEntryCreateRequest,
@@ -31,6 +34,9 @@ from tripper_api.trip.trip_errors import (
     DailyPlanOccupiedError,
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
+    PhotoCollectionRevisionConflictError,
+    PhotoNotFoundError,
+    PhotoOrderInvalidError,
     TimelineCollectionRevisionConflictError,
     TimelineEntryNotFoundError,
     TimelineEntryRevisionConflictError,
@@ -45,6 +51,7 @@ from tripper_api.trip.trip_errors import (
 from tripper_api.trip.trip_model import (
     DailyPlan,
     Destination,
+    Photo,
     TimelineEntry,
     Trip,
     TripMembership,
@@ -160,6 +167,7 @@ class TripService:
                     destination_id=plan.destination_id,
                     revision=plan.revision,
                     timeline_revision=plan.timeline_revision,
+                    photo_revision=plan.photo_revision,
                     date=plan.date,
                     day_number=(plan.date - trip.start_date).days + 1,
                     title=plan.title,
@@ -201,7 +209,12 @@ class TripService:
                         for entry in plan.timeline
                     ],
                     photos=[
-                        PhotoResponse(url=photo.url, caption=photo.caption)
+                        PhotoResponse(
+                            id=photo.id,
+                            position=photo.position,
+                            url=photo.url,
+                            caption=photo.caption,
+                        )
                         for photo in plan.photos
                     ],
                 )
@@ -593,6 +606,111 @@ class TripService:
             raise TimelineCollectionRevisionConflictError(
                 latest.model_dump(mode="json")
             )
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def create_photo(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        request: PhotoCreateRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            if plan.photo_revision != request.starting_revision:
+                conflict = True
+            else:
+                self._repository.add_photo(
+                    Photo(
+                        id=uuid4(),
+                        daily_plan_id=plan.id,
+                        url=request.url,
+                        caption=request.caption,
+                        position=await self._repository.next_photo_position(plan.id),
+                    )
+                )
+                plan.photo_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def delete_photo(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        photo_id: UUID,
+        request: PhotoDeleteRequest,
+    ) -> TripDetailResponse:
+        collection_conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            collection_conflict = plan.photo_revision != request.starting_revision
+            if not collection_conflict:
+                photo = await self._repository.photo_by_id(plan.id, photo_id)
+                if photo is None:
+                    raise PhotoNotFoundError
+                await self._repository.delete_photo(photo)
+                remaining = await self._repository.photos(plan.id)
+                await self._repository.reorder_photos(remaining, remaining)
+                plan.photo_revision += 1
+                stored.trip.content_revision += 1
+        if collection_conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
+        return await self.get_participant_guide(trip_id, account_id)
+
+    async def reorder_photos(
+        self,
+        *,
+        trip_id: UUID,
+        account_id: UUID,
+        plan_id: UUID,
+        request: PhotoReorderRequest,
+    ) -> TripDetailResponse:
+        conflict = False
+        async with self._session.begin():
+            stored = await self._repository.load_for_update(trip_id, account_id)
+            if stored is None:
+                raise TripNotFoundError
+            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+                raise TripEditForbiddenError
+            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            if plan is None:
+                raise DailyPlanNotFoundError
+            if plan.photo_revision != request.starting_revision:
+                conflict = True
+            else:
+                current = await self._repository.photos(plan.id)
+                by_id = {photo.id: photo for photo in current}
+                if set(request.photo_ids) != set(by_id):
+                    raise PhotoOrderInvalidError
+                ordered = [by_id[photo_id] for photo_id in request.photo_ids]
+                await self._repository.reorder_photos(current, ordered)
+                plan.photo_revision += 1
+                stored.trip.content_revision += 1
+        if conflict:
+            latest = await self.get_participant_guide(trip_id, account_id)
+            raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
         return await self.get_participant_guide(trip_id, account_id)
 
     async def move_daily_plan(
