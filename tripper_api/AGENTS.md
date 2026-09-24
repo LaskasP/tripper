@@ -9,6 +9,7 @@ Preserve unrelated worktree changes. Prefer correctness and architectural consis
 ## Feature structure and responsibilities
 
 - Organize by feature and prefix filenames with the feature/package name using Python snake_case: for example, `owner/owner_controller.py`, `owner/owner_service.py`, `owner/owner_dto.py`, `owner/owner_repository.py`, and `owner/owner_model.py` as needed. Extract useful modules rather than creating empty layers.
+- Place reusable dataclass-based read models, query projections, and operation result types in a dedicated feature-prefixed module such as `owner/owner_read_model.py`, rather than defining them inside repository or service modules. Small implementation-only dataclasses may remain next to the code that exclusively uses them.
 - Place shared database, configuration, security, and error infrastructure in `core/`.
 - Controllers handle HTTP input, dependencies, status codes, and transport-only response mapping. Services may return a Pydantic response DTO directly when it is the canonical result of the operation; do not add pass-through result types solely to preserve a mapping step. Keep business rules and SQL out of controllers.
 - Services implement business operations and resource-level authorization. Keep FastAPI `Depends` and HTTP exceptions out of services and repositories.
