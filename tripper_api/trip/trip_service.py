@@ -9,7 +9,12 @@ from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
 from tripper_api.itinerary.itinerary_photo_model import Photo
 from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
+from tripper_api.membership.membership_dto import (
+    TripRosterMemberResponse,
+    TripSummaryResponse,
+)
 from tripper_api.membership.membership_model import TripMembership, TripRole
+from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_dto import (
     DailyPlanMoveRequest,
     DailyPlanResponse,
@@ -34,8 +39,6 @@ from tripper_api.trip.trip_dto import (
     TripCreateRequest,
     TripDetailResponse,
     TripDetailsUpdateRequest,
-    TripRosterMemberResponse,
-    TripSummaryResponse,
 )
 from tripper_api.trip.trip_errors import (
     DailyPlanNotFoundError,
@@ -59,7 +62,7 @@ from tripper_api.trip.trip_errors import (
     TripRevisionConflictError,
 )
 from tripper_api.trip.trip_model import Trip
-from tripper_api.trip.trip_repository import TripRepository
+from tripper_api.trip.trip_repository import TripForUpdate, TripRepository
 
 
 def _location(latitude: float | None, longitude: float | None) -> LocationInput | None:
@@ -69,9 +72,15 @@ def _location(latitude: float | None, longitude: float | None) -> LocationInput 
 
 
 class TripService:
-    def __init__(self, session: AsyncSession, repository: TripRepository) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        repository: TripRepository,
+        membership_repository: MembershipRepository,
+    ) -> None:
         self._session = session
         self._repository = repository
+        self._membership_repository = membership_repository
 
     async def create(
         self,
@@ -103,7 +112,8 @@ class TripService:
             role=TripRole.CREATOR,
         )
         async with self._session.begin():
-            await self._repository.add(trip, destination, membership)
+            await self._repository.add(trip, destination)
+            await self._membership_repository.add(membership)
         return TripSummaryResponse(
             id=trip.id,
             name=trip.name,
@@ -114,17 +124,15 @@ class TripService:
             role=membership.role,
         )
 
-    async def trip_list_for_account(
-        self, account_id: UUID
-    ) -> list[TripSummaryResponse]:
-        async with self._session.begin():
-            return await self._repository.list_for_account(account_id)
-
     async def get_participant_guide(
         self, trip_id: UUID, account_id: UUID
     ) -> TripDetailResponse:
         async with self._session.begin():
-            trip = await self._repository.load_participant_guide(trip_id, account_id)
+            role = await self._membership_repository.current_role(trip_id, account_id)
+            if role is None:
+                raise TripNotFoundError
+            trip = await self._repository.load_participant_guide(trip_id)
+            roster = await self._membership_repository.roster(trip_id)
         if trip is None:
             raise TripNotFoundError
         location = _location(trip.latitude, trip.longitude)
@@ -132,7 +140,7 @@ class TripService:
             id=trip.id,
             revision=trip.revision,
             content_revision=trip.content_revision,
-            role=trip.role,
+            role=role,
             name=trip.name,
             destination=trip.destination,
             short_name=trip.short_name,
@@ -226,9 +234,19 @@ class TripService:
             ],
             roster=[
                 TripRosterMemberResponse(display_name=display_name, role=role)
-                for display_name, role in trip.roster
+                for display_name, role in roster
             ],
         )
+
+    async def _load_for_edit(self, trip_id: UUID, account_id: UUID) -> TripForUpdate:
+        access = await self._membership_repository.lock_trip_and_get_membership(
+            trip_id, account_id
+        )
+        if access is None:
+            raise TripNotFoundError
+        if access.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
+            raise TripEditForbiddenError
+        return await self._repository.load_for_update(access.trip)
 
     async def update_details(
         self,
@@ -239,11 +257,7 @@ class TripService:
     ) -> TripDetailResponse:
         revision_conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             if stored.trip.revision != request.starting_revision:
                 revision_conflict = True
             else:
@@ -326,11 +340,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             if not stored.trip.start_date <= plan_date <= stored.trip.end_date:
                 raise DailyPlanOutOfRangeError
             if request.destination_id not in {item.id for item in stored.destinations}:
@@ -377,11 +387,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_on_date(trip_id, plan_date)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -405,11 +411,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -462,11 +464,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -493,11 +491,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -542,11 +536,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -587,11 +577,7 @@ class TripService:
         entry_conflict = False
         collection_conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -625,11 +611,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -667,11 +649,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             source = await self._repository.plan_by_id(trip_id, source_plan_id)
             target = await self._repository.plan_by_id(trip_id, request.target_plan_id)
             if source is None or target is None or source.id == target.id:
@@ -710,11 +688,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -748,11 +722,7 @@ class TripService:
     ) -> TripDetailResponse:
         collection_conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -781,11 +751,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
@@ -815,11 +781,7 @@ class TripService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            stored = await self._repository.load_for_update(trip_id, account_id)
-            if stored is None:
-                raise TripNotFoundError
-            if stored.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            stored = await self._load_for_edit(trip_id, account_id)
             plan = await self._repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError

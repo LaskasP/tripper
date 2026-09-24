@@ -10,6 +10,7 @@ from tripper_api.auth.auth_model import Account
 from tripper_api.core.config import Settings
 from tripper_api.destination.destination_model import Destination
 from tripper_api.membership.membership_model import TripMembership, TripRole
+from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_model import Trip
 from tripper_api.trip.trip_repository import TripRepository
 
@@ -75,7 +76,8 @@ async def test_postgresql_rejects_a_second_creator_from_another_session(
         )
 
     async with sessions() as first_session, first_session.begin():
-        await TripRepository(first_session).add(trip, destination, creator)
+        await TripRepository(first_session).add(trip, destination)
+        await MembershipRepository(first_session).add(creator)
 
     second_creator = TripMembership(
         id=uuid4(),
@@ -101,7 +103,8 @@ async def test_failed_multi_record_write_rolls_back_the_whole_trip(
 
     with pytest.raises(IntegrityError):
         async with sessions() as write_session, write_session.begin():
-            await TripRepository(write_session).add(trip, destination, creator)
+            await TripRepository(write_session).add(trip, destination)
+            await MembershipRepository(write_session).add(creator)
 
     async with sessions() as read_session:
         persisted_trip = await read_session.scalar(
@@ -133,6 +136,7 @@ async def test_postgresql_rejects_a_partial_destination_location(
 
     with pytest.raises(IntegrityError):
         async with sessions() as write_session, write_session.begin():
-            await TripRepository(write_session).add(trip, destination, creator)
+            await TripRepository(write_session).add(trip, destination)
+            await MembershipRepository(write_session).add(creator)
 
     await engine.dispose()

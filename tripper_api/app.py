@@ -10,6 +10,7 @@ from tripper_api.auth.google_identity import GoogleIdentityVerifier
 from tripper_api.core.config import Settings
 from tripper_api.core.database import Database
 from tripper_api.core.error_handler import register_error_handlers
+from tripper_api.membership.membership_controller import router as membership_router
 from tripper_api.trip.trip_controller import router as trip_router
 
 
@@ -39,6 +40,7 @@ def create_app(
 
     app = FastAPI(title="Tripper API", lifespan=lifespan)
     app.include_router(auth_router)
+    app.include_router(membership_router)
     app.include_router(trip_router)
     register_error_handlers(app)
 

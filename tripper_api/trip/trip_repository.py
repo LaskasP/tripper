@@ -2,17 +2,14 @@ from dataclasses import dataclass
 from datetime import date, time
 from uuid import UUID
 
-from sqlalchemy import case, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tripper_api.auth.auth_model import Account
 from tripper_api.destination.destination_model import Destination
 from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
 from tripper_api.itinerary.itinerary_photo_model import Photo
 from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
-from tripper_api.membership.membership_model import TripMembership, TripRole
-from tripper_api.trip.trip_dto import TripSummaryResponse
 from tripper_api.trip.trip_model import Trip
 
 
@@ -84,7 +81,6 @@ class _StoredParticipantGuide:
     id: UUID
     revision: int
     content_revision: int
-    role: TripRole
     name: str
     destination: str
     short_name: str
@@ -96,13 +92,11 @@ class _StoredParticipantGuide:
     end_date: date
     destinations: tuple[_StoredDestination, ...]
     daily_plans: tuple[_StoredDailyPlan, ...]
-    roster: tuple[tuple[str, TripRole], ...]
 
 
 @dataclass(frozen=True)
-class _StoredTripForUpdate:
+class TripForUpdate:
     trip: Trip
-    role: TripRole
     destinations: tuple[Destination, ...]
     plan_dates: frozenset[date]
     referenced_destination_ids: frozenset[UUID]
@@ -116,55 +110,20 @@ class TripRepository:
         self,
         trip: Trip,
         destination: Destination,
-        membership: TripMembership,
     ) -> None:
         self._session.add(trip)
         await self._session.flush()
-        self._session.add_all((destination, membership))
+        self._session.add(destination)
         await self._session.flush()
 
-    async def list_for_account(self, account_id: UUID) -> list[TripSummaryResponse]:
-        statement = (
-            select(
-                Trip.id,
-                Trip.name,
-                Destination.name,
-                Trip.short_name,
-                Trip.start_date,
-                Trip.end_date,
-                TripMembership.role,
-            )
-            .join(TripMembership, TripMembership.trip_id == Trip.id)
-            .join(
-                Destination,
-                (Destination.trip_id == Trip.id) & (Destination.position == 0),
-            )
-            .where(TripMembership.account_id == account_id)
-            .order_by(Trip.created_at, Trip.id)
-        )
-        rows = (await self._session.execute(statement)).tuples().all()
-        return [
-            TripSummaryResponse(
-                id=row[0],
-                name=row[1],
-                destination=row[2],
-                short_name=row[3],
-                start_date=row[4],
-                end_date=row[5],
-                role=row[6],
-            )
-            for row in rows
-        ]
-
     async def load_participant_guide(
-        self, trip_id: UUID, account_id: UUID
+        self, trip_id: UUID
     ) -> _StoredParticipantGuide | None:
         statement = (
             select(
                 Trip.id,
                 Trip.revision,
                 Trip.content_revision,
-                TripMembership.role,
                 Trip.name,
                 Destination.name,
                 Trip.short_name,
@@ -179,11 +138,7 @@ class TripRepository:
                 Destination,
                 (Destination.trip_id == Trip.id) & (Destination.position == 0),
             )
-            .join(TripMembership, TripMembership.trip_id == Trip.id)
-            .where(
-                Trip.id == trip_id,
-                TripMembership.account_id == account_id,
-            )
+            .where(Trip.id == trip_id)
         )
         row = (await self._session.execute(statement)).tuples().one_or_none()
         if row is None:
@@ -207,21 +162,6 @@ class TripRepository:
             .tuples()
             .all()
         )
-        roster_statement = (
-            select(Account.display_name, TripMembership.role)
-            .join(TripMembership, TripMembership.account_id == Account.id)
-            .where(TripMembership.trip_id == trip_id)
-            .order_by(
-                case(
-                    (TripMembership.role == TripRole.CREATOR, 0),
-                    (TripMembership.role == TripRole.CONTRIBUTOR, 1),
-                    else_=2,
-                ),
-                Account.display_name,
-                TripMembership.account_id,
-            )
-        )
-        roster_rows = (await self._session.execute(roster_statement)).tuples().all()
         plan_rows = (
             (
                 await self._session.execute(
@@ -351,38 +291,21 @@ class TripRepository:
             id=row[0],
             revision=row[1],
             content_revision=row[2],
-            role=row[3],
-            name=row[4],
-            destination=row[5],
-            short_name=row[6],
-            description=row[7],
-            timezone=row[8],
-            latitude=row[9],
-            longitude=row[10],
-            start_date=row[11],
-            end_date=row[12],
+            name=row[3],
+            destination=row[4],
+            short_name=row[5],
+            description=row[6],
+            timezone=row[7],
+            latitude=row[8],
+            longitude=row[9],
+            start_date=row[10],
+            end_date=row[11],
             destinations=tuple(_StoredDestination(*row) for row in destination_rows),
             daily_plans=tuple(daily_plans),
-            roster=tuple((display_name, role) for display_name, role in roster_rows),
         )
 
-    async def load_for_update(
-        self, trip_id: UUID, account_id: UUID
-    ) -> _StoredTripForUpdate | None:
-        row = (
-            await self._session.execute(
-                select(Trip, TripMembership.role)
-                .join(TripMembership, TripMembership.trip_id == Trip.id)
-                .where(
-                    Trip.id == trip_id,
-                    TripMembership.account_id == account_id,
-                )
-                .with_for_update(of=Trip)
-            )
-        ).one_or_none()
-        if row is None:
-            return None
-        trip, role = row
+    async def load_for_update(self, trip: Trip) -> TripForUpdate:
+        trip_id = trip.id
         destinations = tuple(
             (
                 await self._session.scalars(
@@ -416,9 +339,8 @@ class TripRepository:
             for destination_id in timeline_destination_rows
             if destination_id is not None
         )
-        return _StoredTripForUpdate(
+        return TripForUpdate(
             trip=trip,
-            role=role,
             destinations=destinations,
             plan_dates=frozenset(plan_date for plan_date, _ in plans),
             referenced_destination_ids=(

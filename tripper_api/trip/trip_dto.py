@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from tripper_api.membership.membership_dto import TripRosterMemberResponse
 from tripper_api.membership.membership_model import TripRole
 
 
@@ -117,27 +118,10 @@ class TripCreateRequest(BaseModel):
         return self
 
 
-class TripSummaryResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
-
-    id: UUID
-    name: str
-    destination: str
-    short_name: str
-    start_date: date
-    end_date: date
-    role: TripRole
-
-
 class TripCalendarDateResponse(BaseModel):
     date: date
     day_number: int
     is_planned: bool = False
-
-
-class TripRosterMemberResponse(BaseModel):
-    display_name: str
-    role: TripRole
 
 
 class DestinationDetailsResponse(BaseModel):
