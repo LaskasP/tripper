@@ -17,14 +17,8 @@ class TripRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def add(
-        self,
-        trip: Trip,
-        destination: Destination,
-    ) -> None:
+    async def add_trip(self, trip: Trip) -> None:
         self._session.add(trip)
-        await self._session.flush()
-        self._session.add(destination)
         await self._session.flush()
 
     async def load_for_update(self, trip: Trip) -> TripForUpdate:
@@ -190,22 +184,3 @@ class TripRepository:
 
     async def delete_plan(self, plan: DailyPlan) -> None:
         await self._session.delete(plan)
-
-    async def replace_destinations(
-        self,
-        *,
-        previous: tuple[Destination, ...],
-        current: list[Destination],
-        removed: list[Destination],
-    ) -> None:
-        offset = len(previous) + len(current) + 1
-        for destination in previous:
-            destination.position += offset
-        await self._session.flush()
-        for destination in removed:
-            await self._session.delete(destination)
-        await self._session.flush()
-        for position, destination in enumerate(current):
-            destination.position = position
-            self._session.add(destination)
-        await self._session.flush()

@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from tripper_api.core.security import AuthenticatedUser, require_current_user
-from tripper_api.membership.membership_dto import TripSummaryResponse
 from tripper_api.trip.trip_dependencies import get_trip_guide_reader, get_trip_service
 from tripper_api.trip.trip_dto import (
     DailyPlanMoveRequest,
@@ -21,31 +20,12 @@ from tripper_api.trip.trip_dto import (
     TimelineEntryMoveRequest,
     TimelineEntryUpdateRequest,
     TimelineReorderRequest,
-    TripCreateRequest,
-    TripDetailsUpdateRequest,
 )
 from tripper_api.trip.trip_guide_dto import TripDetailResponse
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_service import TripService
 
 router = APIRouter(prefix="/api")
-
-
-@router.post(
-    "/trips",
-    response_model=TripSummaryResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_trip(
-    trip: TripCreateRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripSummaryResponse:
-    created_trip = await service.create(
-        account_id=user.id,
-        request=trip,
-    )
-    return TripSummaryResponse.model_validate(created_trip)
 
 
 @router.get("/trips/{trip_id}", response_model=TripDetailResponse)
@@ -55,20 +35,6 @@ async def get_participant_trip(
     reader: Annotated[TripGuideReader, Depends(get_trip_guide_reader)],
 ) -> TripDetailResponse:
     return await reader.get_participant_guide(trip_id, user.id)
-
-
-@router.put("/trips/{trip_id}/details", response_model=TripDetailResponse)
-async def update_trip_details(
-    trip_id: UUID,
-    trip: TripDetailsUpdateRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.update_details(
-        trip_id=trip_id,
-        account_id=user.id,
-        request=trip,
-    )
 
 
 @router.put(

@@ -3,116 +3,17 @@ from datetime import time as LocalTime
 from typing import Literal
 from urllib.parse import urlparse
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-def _nonblank(value: str) -> str:
-    stripped = value.strip()
-    if not stripped:
-        raise ValueError("value must not be blank")
-    return stripped
-
-
-def _iana_timezone(value: str) -> str:
-    stripped = value.strip()
-    try:
-        ZoneInfo(stripped)
-    except ZoneInfoNotFoundError as error:
-        raise ValueError("timezone must be a valid IANA timezone") from error
-    return stripped
+from tripper_api.destination.destination_dto import LocationInput
+from tripper_api.destination.destination_dto import nonblank as _nonblank
 
 
 def _local_time(value: LocalTime) -> LocalTime:
     if value.tzinfo is not None:
         raise ValueError("time must be a local time without an offset")
     return value
-
-
-class LocationInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    lat: float = Field(ge=-90, le=90)
-    lng: float = Field(ge=-180, le=180)
-
-
-class DestinationDetailsInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: UUID | None = None
-    name: str = Field(min_length=1, max_length=200)
-    timezone: str = Field(min_length=1, max_length=100)
-    location: LocationInput | None = None
-
-    @field_validator("name")
-    @classmethod
-    def validate_nonblank_name(cls, value: str) -> str:
-        return _nonblank(value)
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value: str) -> str:
-        return _iana_timezone(value)
-
-
-class TripDetailsUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    starting_revision: int = Field(ge=1)
-    name: str = Field(min_length=1, max_length=200)
-    short_name: str = Field(default="", max_length=80)
-    description: str = ""
-    start_date: date
-    end_date: date
-    destinations: list[DestinationDetailsInput] = Field(min_length=1)
-
-    @field_validator("name")
-    @classmethod
-    def validate_nonblank_name(cls, value: str) -> str:
-        return _nonblank(value)
-
-    @model_validator(mode="after")
-    def validate_details(self) -> "TripDetailsUpdateRequest":
-        if self.start_date > self.end_date:
-            raise ValueError("start_date must be on or before end_date")
-        destination_ids = [
-            destination.id
-            for destination in self.destinations
-            if destination.id is not None
-        ]
-        if len(destination_ids) != len(set(destination_ids)):
-            raise ValueError("destination ids must be unique")
-        return self
-
-
-class TripCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=200)
-    destination: str = Field(min_length=1, max_length=200)
-    short_name: str = Field(default="", max_length=80)
-    description: str = ""
-    timezone: str = Field(min_length=1, max_length=100)
-    location: LocationInput | None = None
-    start_date: date
-    end_date: date
-
-    @field_validator("name", "destination")
-    @classmethod
-    def validate_nonblank_text(cls, value: str) -> str:
-        return _nonblank(value)
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value: str) -> str:
-        return _iana_timezone(value)
-
-    @model_validator(mode="after")
-    def validate_date_range(self) -> "TripCreateRequest":
-        if self.start_date > self.end_date:
-            raise ValueError("start_date must be on or before end_date")
-        return self
 
 
 class StayWriteRequest(BaseModel):

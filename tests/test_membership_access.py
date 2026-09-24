@@ -11,12 +11,10 @@ from tripper_api.core.config import Settings
 from tripper_api.destination.destination_model import Destination
 from tripper_api.membership.membership_model import TripMembership, TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
-from tripper_api.trip.trip_dto import TripDetailsUpdateRequest
-from tripper_api.trip.trip_errors import TripEditForbiddenError
-from tripper_api.trip.trip_guide_reader import TripGuideReader
+from tripper_api.trip.trip_command_dependencies import get_trip_command_service
+from tripper_api.trip.trip_command_dto import TripDetailsUpdateRequest
+from tripper_api.trip.trip_command_errors import TripEditForbiddenError
 from tripper_api.trip.trip_model import Trip
-from tripper_api.trip.trip_repository import TripRepository
-from tripper_api.trip.trip_service import TripService
 
 pytestmark = [
     pytest.mark.usefixtures("clean_database"),
@@ -168,13 +166,7 @@ async def test_role_change_racing_content_write_uses_the_new_role(
     async def edit_trip() -> None:
         async with sessions() as command_session:
             command_started.set()
-            membership_repository = MembershipRepository(command_session)
-            await TripService(
-                command_session,
-                TripRepository(command_session),
-                membership_repository,
-                TripGuideReader(command_session, membership_repository),
-            ).update_details(
+            await get_trip_command_service(command_session).update_details(
                 trip_id=trip.id,
                 account_id=participant.account_id,
                 request=TripDetailsUpdateRequest(
