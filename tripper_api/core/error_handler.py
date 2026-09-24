@@ -20,6 +20,10 @@ from tripper_api.itinerary.itinerary_daily_plan_errors import (
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
 )
+from tripper_api.itinerary.itinerary_stay_errors import (
+    StayNotFoundError,
+    StayRevisionConflictError,
+)
 from tripper_api.trip.trip_command_errors import (
     TripDateRangeExcludesPlansError,
     TripEditForbiddenError,
@@ -29,8 +33,6 @@ from tripper_api.trip.trip_errors import (
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
-    StayNotFoundError,
-    StayRevisionConflictError,
     TimelineCollectionRevisionConflictError,
     TimelineEntryNotFoundError,
     TimelineEntryRevisionConflictError,
@@ -199,7 +201,7 @@ def register_error_handlers(app: FastAPI) -> None:
             409,
             "stay_revision_conflict",
             "This Stay changed after editing started",
-            latest_values=exc.latest_values,
+            current_stay=exc.current_stay,
         )
 
     @app.exception_handler(TimelineEntryNotFoundError)

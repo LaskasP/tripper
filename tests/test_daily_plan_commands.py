@@ -25,11 +25,11 @@ from tripper_api.itinerary.itinerary_daily_plan_dto import (
 from tripper_api.itinerary.itinerary_daily_plan_errors import (
     DailyPlanRevisionConflictError,
 )
+from tripper_api.itinerary.itinerary_stay_dependencies import get_stay_service
+from tripper_api.itinerary.itinerary_stay_dto import StayWriteRequest
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_command_dependencies import get_trip_command_service
 from tripper_api.trip.trip_command_dto import TripCreateRequest
-from tripper_api.trip.trip_dependencies import get_trip_service
-from tripper_api.trip.trip_dto import StayWriteRequest
 from tripper_api.trip.trip_guide_dto import TripDetailResponse
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_model import Trip
@@ -154,7 +154,7 @@ async def test_whole_plan_delete_accepts_its_direct_revision_after_child_edit(
     plan = with_plan
 
     async with sessions() as child_editor:
-        with_child = await get_trip_service(child_editor).write_stay(
+        created_stay = await get_stay_service(child_editor).write(
             trip_id=scenario.trip_id,
             account_id=scenario.account_id,
             plan_id=plan.id,
@@ -163,6 +163,9 @@ async def test_whole_plan_delete_accepts_its_direct_revision_after_child_edit(
                 name="Harbour Hotel",
             ),
         )
+        with_child = await TripGuideReader(
+            child_editor, MembershipRepository(child_editor)
+        ).get_participant_guide(scenario.trip_id, scenario.account_id)
 
     async with sessions() as plan_editor:
         await get_daily_plan_command_coordinator(plan_editor).clear(
@@ -177,7 +180,7 @@ async def test_whole_plan_delete_accepts_its_direct_revision_after_child_edit(
             reader_session, MembershipRepository(reader_session)
         ).get_participant_guide(scenario.trip_id, scenario.account_id)
 
-    assert with_child.daily_plans[0].stay is not None
+    assert created_stay.name == "Harbour Hotel"
     assert cleared.daily_plans == []
     assert cleared.content_revision == with_child.content_revision + 1
 

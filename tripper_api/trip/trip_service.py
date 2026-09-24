@@ -7,7 +7,6 @@ from tripper_api.destination.destination_errors import TripDestinationMismatchEr
 from tripper_api.itinerary.itinerary_daily_plan_errors import DailyPlanNotFoundError
 from tripper_api.itinerary.itinerary_photo_model import Photo
 from tripper_api.itinerary.itinerary_repository import ItineraryRepository
-from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
 from tripper_api.membership.membership_model import TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
@@ -16,8 +15,6 @@ from tripper_api.trip.trip_dto import (
     PhotoCreateRequest,
     PhotoDeleteRequest,
     PhotoReorderRequest,
-    StayDeleteRequest,
-    StayWriteRequest,
     TimelineEntryCreateRequest,
     TimelineEntryDeleteRequest,
     TimelineEntryMoveRequest,
@@ -28,8 +25,6 @@ from tripper_api.trip.trip_errors import (
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
-    StayNotFoundError,
-    StayRevisionConflictError,
     TimelineCollectionRevisionConflictError,
     TimelineEntryNotFoundError,
     TimelineEntryRevisionConflictError,
@@ -66,86 +61,6 @@ class TripService:
         if access.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
             raise TripEditForbiddenError
         return await self._repository.load_for_update(access.trip)
-
-    async def write_stay(
-        self,
-        *,
-        trip_id: UUID,
-        account_id: UUID,
-        plan_id: UUID,
-        request: StayWriteRequest,
-    ) -> TripDetailResponse:
-        conflict = False
-        async with self._session.begin():
-            stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
-            if plan is None:
-                raise DailyPlanNotFoundError
-            stay = await self._repository.stay(plan.id)
-            if (stay is None) != (request.id is None) or (
-                stay is not None and stay.id != request.id
-            ):
-                conflict = True
-            observed_revision = stay.revision if stay else plan.revision
-            if observed_revision != request.starting_revision:
-                conflict = True
-            if not conflict:
-                if stay is None:
-                    stay = Stay(
-                        id=uuid4(),
-                        daily_plan_id=plan.id,
-                        name=request.name,
-                        address=request.address,
-                        latitude=request.location.lat if request.location else None,
-                        longitude=request.location.lng if request.location else None,
-                        check_in=request.check_in,
-                        check_out=request.check_out,
-                        public_listing_url=request.public_listing_url,
-                        booking_platform=request.booking_platform,
-                    )
-                    self._repository.add_stay(stay)
-                else:
-                    stay.name = request.name
-                    stay.address = request.address
-                    stay.latitude = request.location.lat if request.location else None
-                    stay.longitude = request.location.lng if request.location else None
-                    stay.check_in = request.check_in
-                    stay.check_out = request.check_out
-                    stay.public_listing_url = request.public_listing_url
-                    stay.booking_platform = request.booking_platform
-                    stay.revision += 1
-                stored.trip.content_revision += 1
-        if conflict:
-            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
-            raise StayRevisionConflictError(latest.model_dump(mode="json"))
-        return await self._guide_reader.get_participant_guide(trip_id, account_id)
-
-    async def clear_stay(
-        self,
-        *,
-        trip_id: UUID,
-        account_id: UUID,
-        plan_id: UUID,
-        request: StayDeleteRequest,
-    ) -> TripDetailResponse:
-        conflict = False
-        async with self._session.begin():
-            stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
-            if plan is None:
-                raise DailyPlanNotFoundError
-            stay = await self._repository.stay(plan.id)
-            if stay is None:
-                raise StayNotFoundError
-            if stay.revision != request.starting_revision:
-                conflict = True
-            else:
-                await self._repository.delete_stay(stay)
-                stored.trip.content_revision += 1
-        if conflict:
-            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
-            raise StayRevisionConflictError(latest.model_dump(mode="json"))
-        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def create_timeline_entry(
         self,

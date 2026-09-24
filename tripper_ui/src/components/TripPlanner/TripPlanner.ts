@@ -904,7 +904,7 @@ function renderEditorWorkspace(
             }
             saveStay.disabled = true;
             try {
-              trip = await writeStay(trip.id, current.id, {
+              await writeStay(trip.id, current.id, {
                 ...(activeStayDraft.id ? { id: activeStayDraft.id } : {}),
                 starting_revision: activeStayDraft.starting_revision,
                 name: activeStayDraft.name,
@@ -917,13 +917,22 @@ function renderEditorWorkspace(
                 public_listing_url: activeStayDraft.public_listing_url || null,
                 booking_platform: activeStayDraft.booking_platform || null,
               });
+              trip = await loadParticipantTrip(trip.id);
               stayDraft = undefined;
               dirty = false;
               refreshPreview();
               renderEditor();
               return true;
             } catch (error) {
-              if (error instanceof ApiError && error.latest_values) trip = error.latest_values;
+              if (error instanceof ApiError && error.code === "stay_revision_conflict") {
+                trip = await loadParticipantTrip(trip.id);
+                const latestPlan = trip.daily_plans.find(({ id }) => id === current.id);
+                if (error.current_stay) activeStayDraft.id = error.current_stay.id;
+                else delete activeStayDraft.id;
+                activeStayDraft.starting_revision = error.current_stay?.revision
+                  ?? latestPlan?.revision
+                  ?? activeStayDraft.starting_revision;
+              }
               stayError.textContent = error instanceof Error ? `${error.message} Your values are still here.` : "Could not save the stay.";
               return false;
             } finally {
@@ -944,13 +953,15 @@ function renderEditorWorkspace(
           removeStay.textContent = "Clear stay";
           removeStay.addEventListener("click", () => {
             void clearStay(trip.id, current.id, current.stay!.revision)
-              .then((updated) => {
-                trip = updated;
+              .then(async () => {
+                trip = await loadParticipantTrip(trip.id);
                 refreshPreview();
                 renderEditor();
               })
-              .catch((error: unknown) => {
-                if (error instanceof ApiError && error.latest_values) trip = error.latest_values;
+              .catch(async (error: unknown) => {
+                if (error instanceof ApiError && error.code === "stay_revision_conflict") {
+                  trip = await loadParticipantTrip(trip.id);
+                }
                 validation.textContent = error instanceof Error ? error.message : "Could not clear the stay.";
               });
           });

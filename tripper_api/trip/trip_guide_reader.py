@@ -36,6 +36,20 @@ def _location(
     return GuideLocationResponse(lat=latitude, lng=longitude)
 
 
+def _stay_response(stay: Stay, revision: int) -> StayResponse:
+    return StayResponse(
+        id=stay.id,
+        revision=revision,
+        name=stay.name,
+        address=stay.address,
+        location=_location(stay.latitude, stay.longitude),
+        check_in=stay.check_in,
+        check_out=stay.check_out,
+        public_listing_url=stay.public_listing_url,
+        booking_platform=stay.booking_platform,
+    )
+
+
 @dataclass(frozen=True)
 class _DailyPlanEditRevisions:
     revision: int
@@ -78,6 +92,29 @@ class TripGuideReader:
             roster = await self._membership_repository.roster(trip_id)
             revisions = await self._load_edit_revisions(trip_id)
             return self._to_participant_response(trip, role, roster, revisions)
+
+    async def get_stay(self, trip_id: UUID, plan_id: UUID) -> StayResponse | None:
+        async with self._session.begin():
+            stay = await self._session.scalar(
+                select(Stay)
+                .join(DailyPlan, DailyPlan.id == Stay.daily_plan_id)
+                .options(
+                    load_only(
+                        Stay.id,
+                        Stay.revision,
+                        Stay.name,
+                        Stay.address,
+                        Stay.latitude,
+                        Stay.longitude,
+                        Stay.check_in,
+                        Stay.check_out,
+                        Stay.public_listing_url,
+                        Stay.booking_platform,
+                    )
+                )
+                .where(DailyPlan.trip_id == trip_id, DailyPlan.id == plan_id)
+            )
+            return _stay_response(stay, stay.revision) if stay is not None else None
 
     async def _load_content(self, trip_id: UUID) -> Trip:
         trip = await self._session.scalar(
@@ -273,17 +310,7 @@ class TripGuideReader:
                     summary=plan.summary,
                     background_image=plan.background_image,
                     stay=(
-                        StayResponse(
-                            id=plan.stay.id,
-                            revision=revisions.stays[plan.stay.id],
-                            name=plan.stay.name,
-                            address=plan.stay.address,
-                            location=_location(plan.stay.latitude, plan.stay.longitude),
-                            check_in=plan.stay.check_in,
-                            check_out=plan.stay.check_out,
-                            public_listing_url=plan.stay.public_listing_url,
-                            booking_platform=plan.stay.booking_platform,
-                        )
+                        _stay_response(plan.stay, revisions.stays[plan.stay.id])
                         if plan.stay is not None
                         else None
                     ),

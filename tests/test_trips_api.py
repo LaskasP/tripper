@@ -465,7 +465,7 @@ async def test_editor_creates_edits_and_clears_an_independent_stay(
                 "public_listing_url": "https://example.com/aegean-house",
             },
         )
-        first_stay = first_created.json()["daily_plans"][0]["stay"]
+        first_stay = first_created.json()
         second_created = await client.put(
             second_path,
             json={
@@ -484,12 +484,13 @@ async def test_editor_creates_edits_and_clears_an_independent_stay(
                 "public_listing_url": "https://example.com/aegean-suites",
             },
         )
-        edited_stay = edited.json()["daily_plans"][0]["stay"]
+        edited_stay = edited.json()
         cleared = await client.request(
             "DELETE",
             first_path,
             json={"starting_revision": edited_stay["revision"]},
         )
+        after_clear = (await client.get(f"/api/trips/{trip_id}")).json()
 
     assert first_created.status_code == 200
     assert first_stay["name"] == "Aegean House"
@@ -503,8 +504,8 @@ async def test_editor_creates_edits_and_clears_an_independent_stay(
     assert edited_stay["revision"] == 2
     assert edited_stay["name"] == "Aegean Suites"
     assert edited_stay["location"] is None
-    assert cleared.status_code == 200
-    first_after_clear, second_after_clear = cleared.json()["daily_plans"]
+    assert cleared.status_code == 204
+    first_after_clear, second_after_clear = after_clear["daily_plans"]
     assert first_after_clear["stay"] is None
     assert second_after_clear["stay"]["name"] == "Harbour Hotel"
 
@@ -544,7 +545,7 @@ async def test_stay_writes_reject_invalid_private_stale_and_unauthorized_data(
             await client.put(path, json=request) for request in invalid_requests
         ]
         created = await client.put(path, json=base)
-        stay = created.json()["daily_plans"][0]["stay"]
+        stay = created.json()
         stale = await client.put(
             path,
             json={
@@ -569,6 +570,8 @@ async def test_stay_writes_reject_invalid_private_stale_and_unauthorized_data(
     assert all(response.status_code == 422 for response in rejected)
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "stay_revision_conflict"
+    assert stale.json()["error"]["current_stay"] == stay
+    assert "latest_values" not in stale.json()["error"]
     assert forbidden.status_code == 403
     projected = unchanged.json()["daily_plans"][0]["stay"]
     assert projected["name"] == "Aegean House"

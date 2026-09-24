@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tripper_api.destination.destination_model import Destination
 from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
 from tripper_api.itinerary.itinerary_photo_model import Photo
-from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
 from tripper_api.trip.trip_model import Trip
 from tripper_api.trip.trip_read_model import TripForUpdate
@@ -67,18 +66,6 @@ class TripRepository:
 
     def add_timeline_entry(self, entry: TimelineEntry) -> None:
         self._session.add(entry)
-
-    async def stay(self, daily_plan_id: UUID) -> Stay | None:
-        result = await self._session.scalars(
-            select(Stay).where(Stay.daily_plan_id == daily_plan_id)
-        )
-        return result.one_or_none()
-
-    def add_stay(self, stay: Stay) -> None:
-        self._session.add(stay)
-
-    async def delete_stay(self, stay: Stay) -> None:
-        await self._session.delete(stay)
 
     def add_photo(self, photo: Photo) -> None:
         self._session.add(photo)

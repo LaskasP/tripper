@@ -160,6 +160,7 @@ export class ApiError extends Error {
   readonly code: string;
   readonly latest_values?: TripDetail;
   readonly current_plan?: DailyPlanResponse | null;
+  readonly current_stay?: StayDetail | null;
 
   constructor(
     status: number,
@@ -167,12 +168,14 @@ export class ApiError extends Error {
     message: string,
     latestValues?: TripDetail,
     currentPlan?: DailyPlanResponse | null,
+    currentStay?: StayDetail | null,
   ) {
     super(message);
     this.status = status;
     this.code = code;
     this.latest_values = latestValues;
     this.current_plan = currentPlan;
+    this.current_stay = currentStay;
   }
 }
 
@@ -195,6 +198,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
         message?: string;
         latest_values?: TripDetail;
         current_plan?: DailyPlanResponse | null;
+        current_stay?: StayDetail | null;
       };
     } | null;
     throw new ApiError(
@@ -205,6 +209,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
         : (body?.error?.message ?? "Something went wrong. Please try again."),
       body?.error?.latest_values,
       body?.error?.current_plan,
+      body?.error?.current_stay,
     );
   }
 
@@ -269,8 +274,8 @@ export function writeStay(
   tripId: string,
   planId: string,
   stay: StayWrite,
-): Promise<TripDetail> {
-  return apiRequest<TripDetail>(
+): Promise<StayDetail> {
+  return apiRequest<StayDetail>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
     { method: "PUT", body: JSON.stringify(stay) },
   );
@@ -280,8 +285,8 @@ export function clearStay(
   tripId: string,
   planId: string,
   startingRevision: number,
-): Promise<TripDetail> {
-  return apiRequest<TripDetail>(
+): Promise<void> {
+  return apiRequest<void>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/stay`,
     {
       method: "DELETE",
