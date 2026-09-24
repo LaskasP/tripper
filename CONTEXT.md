@@ -8,7 +8,7 @@ The shared language for trips, their daily guides, and the people who maintain o
 A shareable journey with a stable identity, required date range, one or more destinations, and optional daily plans. Its details may change without making it a different trip.
 
 **Destination**:
-A named place visited during a trip, with its own timezone and an optional geographic point. A trip may include multiple destinations with different timezones.
+A saved, named place visited during a trip, with its own timezone and an optional geographic point. A trip may include multiple destinations with different timezones.
 
 **Creator**:
 The one person with full authority over a particular trip and its management. A trip has exactly one creator at a time, and the same person can have a different role on another trip.
