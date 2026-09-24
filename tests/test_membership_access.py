@@ -13,6 +13,7 @@ from tripper_api.membership.membership_model import TripMembership, TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_dto import TripDetailsUpdateRequest
 from tripper_api.trip.trip_errors import TripEditForbiddenError
+from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_model import Trip
 from tripper_api.trip.trip_repository import TripRepository
 from tripper_api.trip.trip_service import TripService
@@ -167,10 +168,12 @@ async def test_role_change_racing_content_write_uses_the_new_role(
     async def edit_trip() -> None:
         async with sessions() as command_session:
             command_started.set()
+            membership_repository = MembershipRepository(command_session)
             await TripService(
                 command_session,
                 TripRepository(command_session),
-                MembershipRepository(command_session),
+                membership_repository,
+                TripGuideReader(command_session, membership_repository),
             ).update_details(
                 trip_id=trip.id,
                 account_id=participant.account_id,

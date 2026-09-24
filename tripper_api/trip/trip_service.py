@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from itertools import pairwise
 from uuid import UUID, uuid4
 
@@ -9,35 +9,24 @@ from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
 from tripper_api.itinerary.itinerary_photo_model import Photo
 from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
-from tripper_api.membership.membership_dto import (
-    TripRosterMemberResponse,
-    TripSummaryResponse,
-)
+from tripper_api.membership.membership_dto import TripSummaryResponse
 from tripper_api.membership.membership_model import TripMembership, TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_dto import (
     DailyPlanMoveRequest,
-    DailyPlanResponse,
     DailyPlanRevisionRequest,
     DailyPlanWriteRequest,
-    DestinationDetailsResponse,
-    LocationInput,
     PhotoCreateRequest,
     PhotoDeleteRequest,
     PhotoReorderRequest,
-    PhotoResponse,
     StayDeleteRequest,
-    StayResponse,
     StayWriteRequest,
     TimelineEntryCreateRequest,
     TimelineEntryDeleteRequest,
     TimelineEntryMoveRequest,
-    TimelineEntryResponse,
     TimelineEntryUpdateRequest,
     TimelineReorderRequest,
-    TripCalendarDateResponse,
     TripCreateRequest,
-    TripDetailResponse,
     TripDetailsUpdateRequest,
 )
 from tripper_api.trip.trip_errors import (
@@ -61,14 +50,11 @@ from tripper_api.trip.trip_errors import (
     TripNotFoundError,
     TripRevisionConflictError,
 )
+from tripper_api.trip.trip_guide_dto import TripDetailResponse
+from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_model import Trip
-from tripper_api.trip.trip_repository import TripForUpdate, TripRepository
-
-
-def _location(latitude: float | None, longitude: float | None) -> LocationInput | None:
-    if latitude is None or longitude is None:
-        return None
-    return LocationInput(lat=latitude, lng=longitude)
+from tripper_api.trip.trip_read_model import TripForUpdate
+from tripper_api.trip.trip_repository import TripRepository
 
 
 class TripService:
@@ -77,10 +63,12 @@ class TripService:
         session: AsyncSession,
         repository: TripRepository,
         membership_repository: MembershipRepository,
+        guide_reader: TripGuideReader,
     ) -> None:
         self._session = session
         self._repository = repository
         self._membership_repository = membership_repository
+        self._guide_reader = guide_reader
 
     async def create(
         self,
@@ -122,120 +110,6 @@ class TripService:
             start_date=trip.start_date,
             end_date=trip.end_date,
             role=membership.role,
-        )
-
-    async def get_participant_guide(
-        self, trip_id: UUID, account_id: UUID
-    ) -> TripDetailResponse:
-        async with self._session.begin():
-            role = await self._membership_repository.current_role(trip_id, account_id)
-            if role is None:
-                raise TripNotFoundError
-            trip = await self._repository.load_participant_guide(trip_id)
-            roster = await self._membership_repository.roster(trip_id)
-        if trip is None:
-            raise TripNotFoundError
-        location = _location(trip.latitude, trip.longitude)
-        return TripDetailResponse(
-            id=trip.id,
-            revision=trip.revision,
-            content_revision=trip.content_revision,
-            role=role,
-            name=trip.name,
-            destination=trip.destination,
-            short_name=trip.short_name,
-            description=trip.description,
-            timezone=trip.timezone,
-            location=location,
-            start_date=trip.start_date,
-            end_date=trip.end_date,
-            destinations=[
-                DestinationDetailsResponse(
-                    id=destination.id,
-                    name=destination.name,
-                    timezone=destination.timezone,
-                    location=_location(destination.latitude, destination.longitude),
-                    position=destination.position,
-                    revision=destination.revision,
-                )
-                for destination in trip.destinations
-            ],
-            calendar=[
-                TripCalendarDateResponse(
-                    date=trip.start_date + timedelta(days=offset),
-                    day_number=offset + 1,
-                    is_planned=any(
-                        plan.date == trip.start_date + timedelta(days=offset)
-                        for plan in trip.daily_plans
-                    ),
-                )
-                for offset in range((trip.end_date - trip.start_date).days + 1)
-            ],
-            daily_plans=[
-                DailyPlanResponse(
-                    id=plan.id,
-                    destination_id=plan.destination_id,
-                    revision=plan.revision,
-                    timeline_revision=plan.timeline_revision,
-                    photo_revision=plan.photo_revision,
-                    date=plan.date,
-                    day_number=(plan.date - trip.start_date).days + 1,
-                    title=plan.title,
-                    summary=plan.summary,
-                    background_image=plan.background_image,
-                    stay=(
-                        StayResponse(
-                            id=plan.stay.id,
-                            revision=plan.stay.revision,
-                            name=plan.stay.name,
-                            address=plan.stay.address,
-                            location=_location(plan.stay.latitude, plan.stay.longitude),
-                            check_in=plan.stay.check_in,
-                            check_out=plan.stay.check_out,
-                            public_listing_url=plan.stay.public_listing_url,
-                            booking_platform=plan.stay.booking_platform,
-                        )
-                        if plan.stay is not None
-                        else None
-                    ),
-                    timeline=[
-                        TimelineEntryResponse(
-                            id=entry.id,
-                            destination_id=entry.destination_id,
-                            revision=entry.revision,
-                            position=entry.position,
-                            time=entry.local_time,
-                            timezone=(
-                                next(
-                                    destination.timezone
-                                    for destination in trip.destinations
-                                    if destination.id
-                                    == (entry.destination_id or plan.destination_id)
-                                )
-                            ),
-                            title=entry.title,
-                            description=entry.description,
-                            location=_location(entry.latitude, entry.longitude),
-                            location_name=entry.location_name,
-                        )
-                        for entry in plan.timeline
-                    ],
-                    photos=[
-                        PhotoResponse(
-                            id=photo.id,
-                            position=photo.position,
-                            url=photo.url,
-                            caption=photo.caption,
-                        )
-                        for photo in plan.photos
-                    ],
-                )
-                for plan in trip.daily_plans
-            ],
-            roster=[
-                TripRosterMemberResponse(display_name=display_name, role=role)
-                for display_name, role in roster
-            ],
         )
 
     async def _load_for_edit(self, trip_id: UUID, account_id: UUID) -> TripForUpdate:
@@ -326,9 +200,11 @@ class TripService:
                     removed=removed,
                 )
         if revision_conflict:
-            latest_values = await self.get_participant_guide(trip_id, account_id)
+            latest_values = await self._guide_reader.get_participant_guide(
+                trip_id, account_id
+            )
             raise TripRevisionConflictError(latest_values.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def write_daily_plan(
         self,
@@ -373,9 +249,9 @@ class TripService:
                     plan.revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def clear_daily_plan(
         self,
@@ -397,9 +273,9 @@ class TripService:
                 await self._repository.delete_plan(plan)
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def write_stay(
         self,
@@ -450,9 +326,9 @@ class TripService:
                     stay.revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise StayRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def clear_stay(
         self,
@@ -477,9 +353,9 @@ class TripService:
                 await self._repository.delete_stay(stay)
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise StayRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def create_timeline_entry(
         self,
@@ -519,11 +395,11 @@ class TripService:
                 plan.timeline_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise TimelineCollectionRevisionConflictError(
                 latest.model_dump(mode="json")
             )
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def update_timeline_entry(
         self,
@@ -561,9 +437,9 @@ class TripService:
                 plan.timeline_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise TimelineEntryRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def delete_timeline_entry(
         self,
@@ -593,13 +469,13 @@ class TripService:
                 plan.timeline_revision += 1
                 stored.trip.content_revision += 1
         if entry_conflict or collection_conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             if entry_conflict:
                 raise TimelineEntryRevisionConflictError(latest.model_dump(mode="json"))
             raise TimelineCollectionRevisionConflictError(
                 latest.model_dump(mode="json")
             )
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def reorder_timeline_entries(
         self,
@@ -632,11 +508,11 @@ class TripService:
                 plan.timeline_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise TimelineCollectionRevisionConflictError(
                 latest.model_dump(mode="json")
             )
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def move_timeline_entry(
         self,
@@ -672,11 +548,11 @@ class TripService:
                 target.timeline_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise TimelineCollectionRevisionConflictError(
                 latest.model_dump(mode="json")
             )
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def create_photo(
         self,
@@ -707,9 +583,9 @@ class TripService:
                 plan.photo_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def delete_photo(
         self,
@@ -737,9 +613,9 @@ class TripService:
                 plan.photo_revision += 1
                 stored.trip.content_revision += 1
         if collection_conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def reorder_photos(
         self,
@@ -767,9 +643,9 @@ class TripService:
                 plan.photo_revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)
 
     async def move_daily_plan(
         self,
@@ -800,6 +676,6 @@ class TripService:
                 plan.revision += 1
                 stored.trip.content_revision += 1
         if conflict:
-            latest = await self.get_participant_guide(trip_id, account_id)
+            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
-        return await self.get_participant_guide(trip_id, account_id)
+        return await self._guide_reader.get_participant_guide(trip_id, account_id)

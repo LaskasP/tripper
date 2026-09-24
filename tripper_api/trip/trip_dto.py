@@ -7,9 +7,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from tripper_api.membership.membership_dto import TripRosterMemberResponse
-from tripper_api.membership.membership_model import TripRole
-
 
 def _nonblank(value: str) -> str:
     stripped = value.strip()
@@ -118,46 +115,6 @@ class TripCreateRequest(BaseModel):
         return self
 
 
-class TripCalendarDateResponse(BaseModel):
-    date: date
-    day_number: int
-    is_planned: bool = False
-
-
-class DestinationDetailsResponse(BaseModel):
-    id: UUID
-    name: str
-    timezone: str
-    location: LocationInput | None
-    position: int
-    revision: int
-
-
-class TimelineEntryResponse(BaseModel):
-    id: UUID
-    destination_id: UUID | None
-    revision: int
-    position: int
-    time: LocalTime
-    timezone: str
-    title: str
-    description: str
-    location: LocationInput | None
-    location_name: str | None
-
-
-class StayResponse(BaseModel):
-    id: UUID
-    revision: int
-    name: str
-    address: str
-    location: LocationInput | None
-    check_in: LocalTime | None
-    check_out: LocalTime | None
-    public_listing_url: str | None
-    booking_platform: str | None
-
-
 class StayWriteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -202,50 +159,6 @@ class StayDeleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     starting_revision: int = Field(ge=1)
-
-
-class PhotoResponse(BaseModel):
-    id: UUID
-    position: int
-    url: str
-    caption: str
-
-
-class DailyPlanResponse(BaseModel):
-    id: UUID
-    destination_id: UUID
-    revision: int
-    timeline_revision: int
-    photo_revision: int
-    date: date
-    day_number: int
-    title: str
-    summary: str
-    background_image: str
-    stay: StayResponse | None
-    timeline: list[TimelineEntryResponse]
-    photos: list[PhotoResponse]
-
-
-class TripDetailResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: UUID
-    revision: int
-    content_revision: int
-    role: TripRole
-    name: str
-    destination: str
-    short_name: str
-    description: str
-    timezone: str
-    location: LocationInput | None
-    start_date: date
-    end_date: date
-    destinations: list[DestinationDetailsResponse]
-    calendar: list[TripCalendarDateResponse]
-    daily_plans: list[DailyPlanResponse]
-    roster: list[TripRosterMemberResponse]
 
 
 class DailyPlanWriteRequest(BaseModel):
