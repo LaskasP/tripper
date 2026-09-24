@@ -145,21 +145,34 @@ export interface DailyPlanWrite {
   background_image: string;
 }
 
+export interface DailyPlanResponse {
+  id: string;
+  destination_id: string;
+  revision: number;
+  date: string;
+  title: string;
+  summary: string;
+  background_image: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly latest_values?: TripDetail;
+  readonly current_plan?: DailyPlanResponse | null;
 
   constructor(
     status: number,
     code: string,
     message: string,
     latestValues?: TripDetail,
+    currentPlan?: DailyPlanResponse | null,
   ) {
     super(message);
     this.status = status;
     this.code = code;
     this.latest_values = latestValues;
+    this.current_plan = currentPlan;
   }
 }
 
@@ -177,7 +190,12 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as {
-      error?: { code?: string; message?: string; latest_values?: TripDetail };
+      error?: {
+        code?: string;
+        message?: string;
+        latest_values?: TripDetail;
+        current_plan?: DailyPlanResponse | null;
+      };
     } | null;
     throw new ApiError(
       response.status,
@@ -186,8 +204,11 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
         ? "Sign in to manage your trips."
         : (body?.error?.message ?? "Something went wrong. Please try again."),
       body?.error?.latest_values,
+      body?.error?.current_plan,
     );
   }
+
+  if (response.status === 204) return undefined as T;
 
   return (await response.json()) as T;
 }
@@ -219,8 +240,8 @@ export function updateTripDetails(
 
 export function writeDailyPlan(
   tripId: string, date: string, plan: DailyPlanWrite,
-): Promise<TripDetail> {
-  return apiRequest<TripDetail>(
+): Promise<DailyPlanResponse> {
+  return apiRequest<DailyPlanResponse>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(date)}`,
     { method: "PUT", body: JSON.stringify(plan) },
   );
@@ -228,8 +249,8 @@ export function writeDailyPlan(
 
 export function clearDailyPlan(
   tripId: string, date: string, startingRevision: number,
-): Promise<TripDetail> {
-  return apiRequest<TripDetail>(
+): Promise<void> {
+  return apiRequest<void>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(date)}`,
     { method: "DELETE", body: JSON.stringify({ starting_revision: startingRevision }) },
   );
@@ -237,8 +258,8 @@ export function clearDailyPlan(
 
 export function moveDailyPlan(
   tripId: string, planId: string, targetDate: string, startingRevision: number,
-): Promise<TripDetail> {
-  return apiRequest<TripDetail>(
+): Promise<DailyPlanResponse> {
+  return apiRequest<DailyPlanResponse>(
     `/api/trips/${encodeURIComponent(tripId)}/daily-plans/${encodeURIComponent(planId)}/move`,
     { method: "POST", body: JSON.stringify({ starting_revision: startingRevision, target_date: targetDate }) },
   );

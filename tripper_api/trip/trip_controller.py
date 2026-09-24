@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -7,9 +6,6 @@ from fastapi import APIRouter, Depends, status
 from tripper_api.core.security import AuthenticatedUser, require_current_user
 from tripper_api.trip.trip_dependencies import get_trip_guide_reader, get_trip_service
 from tripper_api.trip.trip_dto import (
-    DailyPlanMoveRequest,
-    DailyPlanRevisionRequest,
-    DailyPlanWriteRequest,
     PhotoCreateRequest,
     PhotoDeleteRequest,
     PhotoReorderRequest,
@@ -35,52 +31,6 @@ async def get_participant_trip(
     reader: Annotated[TripGuideReader, Depends(get_trip_guide_reader)],
 ) -> TripDetailResponse:
     return await reader.get_participant_guide(trip_id, user.id)
-
-
-@router.put(
-    "/trips/{trip_id}/daily-plans/{plan_date}", response_model=TripDetailResponse
-)
-async def write_daily_plan(
-    trip_id: UUID,
-    plan_date: date,
-    request: DailyPlanWriteRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.write_daily_plan(
-        trip_id=trip_id, account_id=user.id, plan_date=plan_date, request=request
-    )
-
-
-@router.delete(
-    "/trips/{trip_id}/daily-plans/{plan_date}", response_model=TripDetailResponse
-)
-async def clear_daily_plan(
-    trip_id: UUID,
-    plan_date: date,
-    request: DailyPlanRevisionRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.clear_daily_plan(
-        trip_id=trip_id, account_id=user.id, plan_date=plan_date, request=request
-    )
-
-
-@router.post(
-    "/trips/{trip_id}/daily-plans/{plan_id}/move",
-    response_model=TripDetailResponse,
-)
-async def move_daily_plan(
-    trip_id: UUID,
-    plan_id: UUID,
-    request: DailyPlanMoveRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.move_daily_plan(
-        trip_id=trip_id, account_id=user.id, plan_id=plan_id, request=request
-    )
 
 
 @router.put(

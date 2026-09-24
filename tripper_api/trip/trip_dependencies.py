@@ -4,6 +4,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.core.database import get_database_session
+from tripper_api.itinerary.itinerary_repository import ItineraryRepository
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_repository import TripRepository
@@ -23,6 +24,7 @@ def get_trip_service(
     return TripService(
         session,
         TripRepository(session),
+        ItineraryRepository(session),
         membership_repository,
         TripGuideReader(session, membership_repository),
     )

@@ -14,16 +14,18 @@ from tripper_api.destination.destination_errors import (
     TripDestinationInUseError,
     TripDestinationMismatchError,
 )
+from tripper_api.itinerary.itinerary_daily_plan_errors import (
+    DailyPlanNotFoundError,
+    DailyPlanOccupiedError,
+    DailyPlanOutOfRangeError,
+    DailyPlanRevisionConflictError,
+)
 from tripper_api.trip.trip_command_errors import (
     TripDateRangeExcludesPlansError,
     TripEditForbiddenError,
     TripRevisionConflictError,
 )
 from tripper_api.trip.trip_errors import (
-    DailyPlanNotFoundError,
-    DailyPlanOccupiedError,
-    DailyPlanOutOfRangeError,
-    DailyPlanRevisionConflictError,
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
@@ -180,7 +182,7 @@ def register_error_handlers(app: FastAPI) -> None:
             409,
             "daily_plan_revision_conflict",
             "This Daily plan changed after editing started",
-            latest_values=exc.latest_values,
+            current_plan=exc.current_plan,
         )
 
     @app.exception_handler(StayNotFoundError)

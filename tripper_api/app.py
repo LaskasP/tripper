@@ -10,6 +10,9 @@ from tripper_api.auth.google_identity import GoogleIdentityVerifier
 from tripper_api.core.config import Settings
 from tripper_api.core.database import Database
 from tripper_api.core.error_handler import register_error_handlers
+from tripper_api.itinerary.itinerary_daily_plan_controller import (
+    router as daily_plan_router,
+)
 from tripper_api.membership.membership_controller import router as membership_router
 from tripper_api.trip.trip_command_controller import router as trip_command_router
 from tripper_api.trip.trip_controller import router as trip_router
@@ -43,6 +46,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(membership_router)
     app.include_router(trip_command_router)
+    app.include_router(daily_plan_router)
     app.include_router(trip_router)
     register_error_handlers(app)
 

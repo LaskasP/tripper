@@ -1,21 +1,18 @@
-from datetime import date
 from itertools import pairwise
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.destination.destination_errors import TripDestinationMismatchError
-from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
+from tripper_api.itinerary.itinerary_daily_plan_errors import DailyPlanNotFoundError
 from tripper_api.itinerary.itinerary_photo_model import Photo
+from tripper_api.itinerary.itinerary_repository import ItineraryRepository
 from tripper_api.itinerary.itinerary_stay_model import Stay
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
 from tripper_api.membership.membership_model import TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_command_errors import TripEditForbiddenError
 from tripper_api.trip.trip_dto import (
-    DailyPlanMoveRequest,
-    DailyPlanRevisionRequest,
-    DailyPlanWriteRequest,
     PhotoCreateRequest,
     PhotoDeleteRequest,
     PhotoReorderRequest,
@@ -28,10 +25,6 @@ from tripper_api.trip.trip_dto import (
     TimelineReorderRequest,
 )
 from tripper_api.trip.trip_errors import (
-    DailyPlanNotFoundError,
-    DailyPlanOccupiedError,
-    DailyPlanOutOfRangeError,
-    DailyPlanRevisionConflictError,
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
@@ -54,11 +47,13 @@ class TripService:
         self,
         session: AsyncSession,
         repository: TripRepository,
+        itinerary_repository: ItineraryRepository,
         membership_repository: MembershipRepository,
         guide_reader: TripGuideReader,
     ) -> None:
         self._session = session
         self._repository = repository
+        self._itinerary_repository = itinerary_repository
         self._membership_repository = membership_repository
         self._guide_reader = guide_reader
 
@@ -72,77 +67,6 @@ class TripService:
             raise TripEditForbiddenError
         return await self._repository.load_for_update(access.trip)
 
-    async def write_daily_plan(
-        self,
-        *,
-        trip_id: UUID,
-        account_id: UUID,
-        plan_date: date,
-        request: DailyPlanWriteRequest,
-    ) -> TripDetailResponse:
-        conflict = False
-        async with self._session.begin():
-            stored = await self._load_for_edit(trip_id, account_id)
-            if not stored.trip.start_date <= plan_date <= stored.trip.end_date:
-                raise DailyPlanOutOfRangeError
-            if request.destination_id not in {item.id for item in stored.destinations}:
-                raise TripDestinationMismatchError
-            plan = await self._repository.plan_on_date(trip_id, plan_date)
-            if (plan is None) != (request.id is None) or (
-                plan is not None and plan.id != request.id
-            ):
-                conflict = True
-            observed_revision = plan.revision if plan else stored.trip.content_revision
-            if observed_revision != request.starting_revision:
-                conflict = True
-            if not conflict:
-                if plan is None:
-                    plan = DailyPlan(
-                        id=uuid4(),
-                        trip_id=trip_id,
-                        date=plan_date,
-                        destination_id=request.destination_id,
-                        title=request.title,
-                        summary=request.summary,
-                        background_image=request.background_image,
-                    )
-                    self._repository.add_plan(plan)
-                else:
-                    plan.destination_id = request.destination_id
-                    plan.title = request.title
-                    plan.summary = request.summary
-                    plan.background_image = request.background_image
-                    plan.revision += 1
-                stored.trip.content_revision += 1
-        if conflict:
-            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
-            raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
-        return await self._guide_reader.get_participant_guide(trip_id, account_id)
-
-    async def clear_daily_plan(
-        self,
-        *,
-        trip_id: UUID,
-        account_id: UUID,
-        plan_date: date,
-        request: DailyPlanRevisionRequest,
-    ) -> TripDetailResponse:
-        conflict = False
-        async with self._session.begin():
-            stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_on_date(trip_id, plan_date)
-            if plan is None:
-                raise DailyPlanNotFoundError
-            if plan.revision != request.starting_revision:
-                conflict = True
-            else:
-                await self._repository.delete_plan(plan)
-                stored.trip.content_revision += 1
-        if conflict:
-            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
-            raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
-        return await self._guide_reader.get_participant_guide(trip_id, account_id)
-
     async def write_stay(
         self,
         *,
@@ -154,7 +78,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             stay = await self._repository.stay(plan.id)
@@ -207,7 +131,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             stay = await self._repository.stay(plan.id)
@@ -234,7 +158,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             if request.destination_id is not None and request.destination_id not in {
@@ -279,7 +203,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             entry = await self._repository.timeline_entry_by_id(plan.id, entry_id)
@@ -320,7 +244,7 @@ class TripService:
         collection_conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             entry = await self._repository.timeline_entry_by_id(plan.id, entry_id)
@@ -354,7 +278,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             if plan.timeline_revision != request.starting_revision:
@@ -392,8 +316,12 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            source = await self._repository.plan_by_id(trip_id, source_plan_id)
-            target = await self._repository.plan_by_id(trip_id, request.target_plan_id)
+            source = await self._itinerary_repository.plan_by_id(
+                trip_id, source_plan_id
+            )
+            target = await self._itinerary_repository.plan_by_id(
+                trip_id, request.target_plan_id
+            )
             if source is None or target is None or source.id == target.id:
                 raise DailyPlanNotFoundError
             entry = await self._repository.timeline_entry_by_id(source.id, entry_id)
@@ -431,7 +359,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             if plan.photo_revision != request.starting_revision:
@@ -465,7 +393,7 @@ class TripService:
         collection_conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             collection_conflict = plan.photo_revision != request.starting_revision
@@ -494,7 +422,7 @@ class TripService:
         conflict = False
         async with self._session.begin():
             stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
+            plan = await self._itinerary_repository.plan_by_id(trip_id, plan_id)
             if plan is None:
                 raise DailyPlanNotFoundError
             if plan.photo_revision != request.starting_revision:
@@ -511,37 +439,4 @@ class TripService:
         if conflict:
             latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
             raise PhotoCollectionRevisionConflictError(latest.model_dump(mode="json"))
-        return await self._guide_reader.get_participant_guide(trip_id, account_id)
-
-    async def move_daily_plan(
-        self,
-        *,
-        trip_id: UUID,
-        account_id: UUID,
-        plan_id: UUID,
-        request: DailyPlanMoveRequest,
-    ) -> TripDetailResponse:
-        conflict = False
-        async with self._session.begin():
-            stored = await self._load_for_edit(trip_id, account_id)
-            plan = await self._repository.plan_by_id(trip_id, plan_id)
-            if plan is None:
-                raise DailyPlanNotFoundError
-            if plan.revision != request.starting_revision:
-                conflict = True
-            else:
-                if (
-                    not stored.trip.start_date
-                    <= request.target_date
-                    <= stored.trip.end_date
-                ):
-                    raise DailyPlanOutOfRangeError
-                if await self._repository.plan_on_date(trip_id, request.target_date):
-                    raise DailyPlanOccupiedError
-                plan.date = request.target_date
-                plan.revision += 1
-                stored.trip.content_revision += 1
-        if conflict:
-            latest = await self._guide_reader.get_participant_guide(trip_id, account_id)
-            raise DailyPlanRevisionConflictError(latest.model_dump(mode="json"))
         return await self._guide_reader.get_participant_guide(trip_id, account_id)

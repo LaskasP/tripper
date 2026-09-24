@@ -16,6 +16,7 @@ import {
   updateTimelineEntry,
   writeDailyPlan,
   writeStay,
+  type DailyPlanResponse,
   type PhotoDetail,
   type TimelineEntryDetail,
   type TripDetail,
@@ -625,14 +626,12 @@ function renderEditorWorkspace(
         makeField("Day title", planDraft.title, (value) => (planDraft.title = value)),
         summary, background, imagePreview, actions);
       const showPlanConflict = (
-        latestTrip: TripDetail,
-        retryOperation?: { label: string; after_date: string; run: (revision: number) => Promise<TripDetail> },
+        latest: DailyPlanResponse | null,
+        retryOperation?: { label: string; after_date: string; run: (revision: number) => Promise<unknown> },
       ): void => {
-        trip = latestTrip;
         conflictPending = true;
         save.disabled = true;
         form.querySelector(".trip-details-form__conflict")?.remove();
-        const latest = trip.daily_plans.find(({ date }) => date === planDraft.date);
         const conflict = document.createElement("section");
         conflict.className = "trip-details-form__conflict";
         const heading = document.createElement("h4");
@@ -658,9 +657,14 @@ function renderEditorWorkspace(
         reload.type = "button";
         reload.textContent = "Reload latest";
         reload.addEventListener("click", () => {
-          clearDraft(); dirty = false;
-          planDraft = dailyPlanDraft(trip, planDraft.date);
-          refreshPreview(); showPlan();
+          void (async () => {
+            trip = await loadParticipantTrip(trip.id);
+            clearDraft(); dirty = false;
+            planDraft = dailyPlanDraft(trip, planDraft.date);
+            refreshPreview(); showPlan();
+          })().catch((error) => {
+            validation.textContent = error instanceof Error ? error.message : "Could not reload the latest guide.";
+          });
         });
         const reapply = document.createElement("button");
         reapply.type = "button";
@@ -673,17 +677,19 @@ function renderEditorWorkspace(
             }
             reapply.disabled = true;
             try {
-              trip = await retryOperation.run(latest.revision);
+              await retryOperation.run(latest.revision);
+              trip = await loadParticipantTrip(trip.id);
               dirty = false;
               planDraft = dailyPlanDraft(trip, retryOperation.after_date);
               refreshPreview(); showPlan();
             } catch (error) {
-              if (error instanceof ApiError && error.status === 409 && error.latest_values) {
-                showPlanConflict(error.latest_values, retryOperation);
+              if (error instanceof ApiError && error.status === 409) {
+                showPlanConflict(error.current_plan ?? null, retryOperation);
               } else validation.textContent = error instanceof Error ? error.message : "Could not retry. Reload and try again.";
             } finally { reapply.disabled = false; }
             return;
           }
+          if (!latest) trip = await loadParticipantTrip(trip.id);
           clearDraft();
           if (latest) planDraft.id = latest.id;
           else delete planDraft.id;
@@ -710,7 +716,7 @@ function renderEditorWorkspace(
         }
         save.disabled = true;
         try {
-          const updated = await writeDailyPlan(trip.id, planDraft.date, {
+          await writeDailyPlan(trip.id, planDraft.date, {
             ...(planDraft.id ? { id: planDraft.id } : {}),
             starting_revision: planDraft.starting_revision,
             destination_id: planDraft.destination_id,
@@ -718,13 +724,13 @@ function renderEditorWorkspace(
             summary: planDraft.summary,
             background_image: planDraft.background_image,
           });
-          clearDraft(); trip = updated; dirty = false;
+          clearDraft(); trip = await loadParticipantTrip(trip.id); dirty = false;
           planDraft = dailyPlanDraft(trip, planDraft.date);
           refreshPreview(); showPlan();
           return true;
         } catch (error) {
-          if (error instanceof ApiError && error.status === 409 && error.latest_values) {
-            showPlanConflict(error.latest_values);
+          if (error instanceof ApiError && error.status === 409) {
+            showPlanConflict(error.current_plan ?? null);
           } else if (error instanceof ApiError && error.status === 403) {
             clearDailyPlanDrafts(trip.id);
             form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach((input) => (input.readOnly = true));
@@ -755,7 +761,7 @@ function renderEditorWorkspace(
                 const latest = trip.daily_plans.find(({ date }) => date === planDraft.date);
                 if (latest?.id !== planDraft.id ||
                     (latest?.revision ?? trip.content_revision) !== planDraft.starting_revision) {
-                  showPlanConflict(trip);
+                  showPlanConflict(latest ?? null);
                 } else validation.textContent = "Signed in again. Retry save when ready.";
                 signIn.remove();
               })().catch(() => { validation.textContent = "Could not restore your Session. Your values are still here."; });
@@ -771,7 +777,7 @@ function renderEditorWorkspace(
       editor.append(form);
       if (planDraft.id !== current?.id ||
           planDraft.starting_revision !== (current?.revision ?? trip.content_revision)) {
-        showPlanConflict(trip);
+        showPlanConflict(current ?? null);
       }
       if (current) {
         const staySection = document.createElement("section");
@@ -1765,12 +1771,13 @@ function renderEditorWorkspace(
           if (dirty) { validation.textContent = "Save or Cancel your day changes before moving the plan."; return; }
           if (!target.value) return;
           try {
-            trip = await moveDailyPlan(trip.id, current.id, target.value, current.revision);
+            await moveDailyPlan(trip.id, current.id, target.value, current.revision);
+            trip = await loadParticipantTrip(trip.id);
             planDraft = dailyPlanDraft(trip, target.value);
             refreshPreview(); showPlan();
           } catch (error) {
-            if (error instanceof ApiError && error.status === 409 && error.latest_values) {
-              showPlanConflict(error.latest_values, {
+            if (error instanceof ApiError && error.status === 409) {
+              showPlanConflict(error.current_plan ?? null, {
                 label: "Retry move",
                 after_date: target.value,
                 run: (revision) => moveDailyPlan(trip.id, current.id, target.value, revision),
@@ -1786,12 +1793,13 @@ function renderEditorWorkspace(
           if (dirty) { validation.textContent = "Save or Cancel your day changes before clearing the plan."; return; }
           if (!window.confirm(`Clear the complete plan for ${formatDateLabel(current.date)}? This removes its activities, stay, and photos.`)) return;
           try {
-            trip = await clearDailyPlan(trip.id, current.date, current.revision);
+            await clearDailyPlan(trip.id, current.date, current.revision);
+            trip = await loadParticipantTrip(trip.id);
             planDraft = dailyPlanDraft(trip, current.date);
             refreshPreview(); showPlan();
           } catch (error) {
-            if (error instanceof ApiError && error.status === 409 && error.latest_values) {
-              showPlanConflict(error.latest_values, {
+            if (error instanceof ApiError && error.status === 409) {
+              showPlanConflict(error.current_plan ?? null, {
                 label: "Retry clear",
                 after_date: current.date,
                 run: (revision) => clearDailyPlan(trip.id, current.date, revision),

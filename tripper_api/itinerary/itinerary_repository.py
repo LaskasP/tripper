@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -11,6 +12,31 @@ from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
 class ItineraryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def plan_on_date(self, trip_id: UUID, plan_date: date) -> DailyPlan | None:
+        result = await self._session.scalars(
+            select(DailyPlan).where(
+                DailyPlan.trip_id == trip_id,
+                DailyPlan.date == plan_date,
+            )
+        )
+        return result.one_or_none()
+
+    async def plan_by_id(self, trip_id: UUID, plan_id: UUID) -> DailyPlan | None:
+        result = await self._session.scalars(
+            select(DailyPlan).where(
+                DailyPlan.trip_id == trip_id,
+                DailyPlan.id == plan_id,
+            )
+        )
+        return result.one_or_none()
+
+    async def add_plan(self, plan: DailyPlan) -> None:
+        self._session.add(plan)
+        await self._session.flush()
+
+    async def delete_plan(self, plan: DailyPlan) -> None:
+        await self._session.delete(plan)
 
     async def trip_references(self, trip_id: UUID) -> ItineraryTripReferences:
         plans = (

@@ -23,6 +23,15 @@ class DestinationRepository:
         )
         return tuple(destinations.all())
 
+    async def belongs_to_trip(self, trip_id: UUID, destination_id: UUID) -> bool:
+        stored_id = await self._session.scalar(
+            select(Destination.id).where(
+                Destination.trip_id == trip_id,
+                Destination.id == destination_id,
+            )
+        )
+        return stored_id is not None
+
     async def replace(
         self,
         *,
