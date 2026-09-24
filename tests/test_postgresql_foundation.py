@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tripper_api.auth.auth_model import Account
 from tripper_api.core.config import Settings
-from tripper_api.trip.trip_model import Destination, Trip, TripMembership, TripRole
+from tripper_api.destination.destination_model import Destination
+from tripper_api.membership.membership_model import TripMembership, TripRole
+from tripper_api.trip.trip_model import Trip
 from tripper_api.trip.trip_repository import TripRepository
 
 pytestmark = [

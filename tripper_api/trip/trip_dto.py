@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from tripper_api.trip.trip_model import TripRole
+from tripper_api.membership.membership_model import TripRole
 
 
 def _nonblank(value: str) -> str:

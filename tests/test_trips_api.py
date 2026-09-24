@@ -226,6 +226,71 @@ async def test_editor_creates_edits_and_clears_one_daily_plan(
         assert cleared.json()["calendar"][1]["is_planned"] is False
 
 
+async def test_clearing_a_populated_daily_plan_preserves_the_route_contract(
+    database_settings: Settings,
+) -> None:
+    async for client, _ in app_client(database_settings, {"id": ALEX_ID}):
+        trip_id = (await client.post("/api/trips", json=TRIP)).json()["id"]
+        detail = (await client.get(f"/api/trips/{trip_id}")).json()
+        created = await client.put(
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={
+                "starting_revision": detail["content_revision"],
+                "destination_id": detail["destinations"][0]["id"],
+                "title": "Arrival",
+                "summary": "",
+                "background_image": "",
+            },
+        )
+        plan = created.json()["daily_plans"][0]
+        plan_path = f"/api/trips/{trip_id}/daily-plans/{plan['id']}"
+        await client.post(
+            f"{plan_path}/timeline",
+            json={
+                "starting_revision": plan["timeline_revision"],
+                "time": "09:00",
+                "title": "Breakfast",
+            },
+        )
+        await client.put(
+            f"{plan_path}/stay",
+            json={
+                "starting_revision": plan["revision"],
+                "name": "Aegean House",
+            },
+        )
+        await client.post(
+            f"{plan_path}/photos",
+            json={
+                "starting_revision": plan["photo_revision"],
+                "url": "https://images.example/arrival.jpg",
+                "caption": "Arrival",
+            },
+        )
+
+        cleared = await client.request(
+            "DELETE",
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={"starting_revision": plan["revision"]},
+        )
+        missing = await client.request(
+            "DELETE",
+            f"/api/trips/{trip_id}/daily-plans/2027-06-10",
+            json={"starting_revision": plan["revision"]},
+        )
+
+    assert cleared.status_code == 200
+    assert cleared.json()["content_revision"] == created.json()["content_revision"] + 4
+    assert cleared.json()["daily_plans"] == []
+    assert missing.status_code == 404
+    assert missing.json() == {
+        "error": {
+            "code": "daily_plan_not_found",
+            "message": "Daily plan not found",
+        }
+    }
+
+
 async def test_move_daily_plan_preserves_its_content_and_rejects_occupied_target(
     database_settings: Settings,
 ) -> None:

@@ -6,17 +6,14 @@ from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tripper_api.auth.auth_model import Account
+from tripper_api.destination.destination_model import Destination
+from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
+from tripper_api.itinerary.itinerary_photo_model import Photo
+from tripper_api.itinerary.itinerary_stay_model import Stay
+from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
+from tripper_api.membership.membership_model import TripMembership, TripRole
 from tripper_api.trip.trip_dto import TripSummaryResponse
-from tripper_api.trip.trip_model import (
-    DailyPlan,
-    Destination,
-    Photo,
-    Stay,
-    TimelineEntry,
-    Trip,
-    TripMembership,
-    TripRole,
-)
+from tripper_api.trip.trip_model import Trip
 
 
 @dataclass(frozen=True)
