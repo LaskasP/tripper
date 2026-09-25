@@ -24,6 +24,12 @@ from tripper_api.itinerary.itinerary_stay_errors import (
     StayNotFoundError,
     StayRevisionConflictError,
 )
+from tripper_api.itinerary.itinerary_timeline_errors import (
+    TimelineCollectionRevisionConflictError,
+    TimelineEntryNotFoundError,
+    TimelineEntryRevisionConflictError,
+    TimelineOrderInvalidError,
+)
 from tripper_api.trip.trip_command_errors import (
     TripDateRangeExcludesPlansError,
     TripEditForbiddenError,
@@ -33,10 +39,6 @@ from tripper_api.trip.trip_errors import (
     PhotoCollectionRevisionConflictError,
     PhotoNotFoundError,
     PhotoOrderInvalidError,
-    TimelineCollectionRevisionConflictError,
-    TimelineEntryNotFoundError,
-    TimelineEntryRevisionConflictError,
-    TimelineOrderInvalidError,
     TripNotFoundError,
 )
 

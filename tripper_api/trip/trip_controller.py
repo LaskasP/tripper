@@ -9,11 +9,6 @@ from tripper_api.trip.trip_dto import (
     PhotoCreateRequest,
     PhotoDeleteRequest,
     PhotoReorderRequest,
-    TimelineEntryCreateRequest,
-    TimelineEntryDeleteRequest,
-    TimelineEntryMoveRequest,
-    TimelineEntryUpdateRequest,
-    TimelineReorderRequest,
 )
 from tripper_api.trip.trip_guide_dto import TripDetailResponse
 from tripper_api.trip.trip_guide_reader import TripGuideReader
@@ -29,108 +24,6 @@ async def get_participant_trip(
     reader: Annotated[TripGuideReader, Depends(get_trip_guide_reader)],
 ) -> TripDetailResponse:
     return await reader.get_participant_guide(trip_id, user.id)
-
-
-@router.post(
-    "/trips/{trip_id}/daily-plans/{plan_id}/timeline",
-    response_model=TripDetailResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_timeline_entry(
-    trip_id: UUID,
-    plan_id: UUID,
-    request: TimelineEntryCreateRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.create_timeline_entry(
-        trip_id=trip_id,
-        account_id=user.id,
-        plan_id=plan_id,
-        request=request,
-    )
-
-
-@router.post(
-    "/trips/{trip_id}/daily-plans/{plan_id}/timeline/reorder",
-    response_model=TripDetailResponse,
-)
-async def reorder_timeline_entries(
-    trip_id: UUID,
-    plan_id: UUID,
-    request: TimelineReorderRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.reorder_timeline_entries(
-        trip_id=trip_id,
-        account_id=user.id,
-        plan_id=plan_id,
-        request=request,
-    )
-
-
-@router.post(
-    "/trips/{trip_id}/daily-plans/{plan_id}/timeline/{entry_id}/move",
-    response_model=TripDetailResponse,
-)
-async def move_timeline_entry(
-    trip_id: UUID,
-    plan_id: UUID,
-    entry_id: UUID,
-    request: TimelineEntryMoveRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.move_timeline_entry(
-        trip_id=trip_id,
-        account_id=user.id,
-        source_plan_id=plan_id,
-        entry_id=entry_id,
-        request=request,
-    )
-
-
-@router.put(
-    "/trips/{trip_id}/daily-plans/{plan_id}/timeline/{entry_id}",
-    response_model=TripDetailResponse,
-)
-async def update_timeline_entry(
-    trip_id: UUID,
-    plan_id: UUID,
-    entry_id: UUID,
-    request: TimelineEntryUpdateRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.update_timeline_entry(
-        trip_id=trip_id,
-        account_id=user.id,
-        plan_id=plan_id,
-        entry_id=entry_id,
-        request=request,
-    )
-
-
-@router.delete(
-    "/trips/{trip_id}/daily-plans/{plan_id}/timeline/{entry_id}",
-    response_model=TripDetailResponse,
-)
-async def delete_timeline_entry(
-    trip_id: UUID,
-    plan_id: UUID,
-    entry_id: UUID,
-    request: TimelineEntryDeleteRequest,
-    user: Annotated[AuthenticatedUser, Depends(require_current_user)],
-    service: Annotated[TripService, Depends(get_trip_service)],
-) -> TripDetailResponse:
-    return await service.delete_timeline_entry(
-        trip_id=trip_id,
-        account_id=user.id,
-        plan_id=plan_id,
-        entry_id=entry_id,
-        request=request,
-    )
 
 
 @router.post(
