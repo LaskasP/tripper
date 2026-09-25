@@ -20,6 +20,11 @@ from tripper_api.itinerary.itinerary_daily_plan_errors import (
     DailyPlanOutOfRangeError,
     DailyPlanRevisionConflictError,
 )
+from tripper_api.itinerary.itinerary_photo_errors import (
+    PhotoCollectionRevisionConflictError,
+    PhotoNotFoundError,
+    PhotoOrderInvalidError,
+)
 from tripper_api.itinerary.itinerary_stay_errors import (
     StayNotFoundError,
     StayRevisionConflictError,
@@ -35,12 +40,7 @@ from tripper_api.trip.trip_command_errors import (
     TripEditForbiddenError,
     TripRevisionConflictError,
 )
-from tripper_api.trip.trip_errors import (
-    PhotoCollectionRevisionConflictError,
-    PhotoNotFoundError,
-    PhotoOrderInvalidError,
-    TripNotFoundError,
-)
+from tripper_api.trip.trip_errors import TripNotFoundError
 
 logger = logging.getLogger(__name__)
 

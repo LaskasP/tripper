@@ -13,6 +13,7 @@ from tripper_api.core.error_handler import register_error_handlers
 from tripper_api.itinerary.itinerary_daily_plan_controller import (
     router as daily_plan_router,
 )
+from tripper_api.itinerary.itinerary_photo_controller import router as photo_router
 from tripper_api.itinerary.itinerary_stay_controller import router as stay_router
 from tripper_api.itinerary.itinerary_timeline_controller import (
     router as timeline_router,
@@ -53,6 +54,7 @@ def create_app(
     app.include_router(daily_plan_router)
     app.include_router(stay_router)
     app.include_router(timeline_router)
+    app.include_router(photo_router)
     app.include_router(trip_router)
     register_error_handlers(app)
 
