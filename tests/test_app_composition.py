@@ -1,4 +1,6 @@
+import pytest
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 from tripper_api.app import create_app
 from tripper_api.auth.auth_error_handler import register_auth_error_handlers
@@ -183,3 +185,202 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
         TripRevisionConflictError,
     }
     assert feature_errors <= app.exception_handlers.keys()
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected_status", "expected_error"),
+    [
+        (
+            AuthenticationRequiredError(),
+            401,
+            {
+                "code": "authentication_required",
+                "message": "Authentication required",
+            },
+        ),
+        (
+            CsrfValidationError(),
+            403,
+            {
+                "code": "csrf_validation_failed",
+                "message": "CSRF validation failed",
+            },
+        ),
+        (
+            InvalidGoogleCredentialError(),
+            401,
+            {
+                "code": "invalid_google_credential",
+                "message": "Google sign-in failed",
+            },
+        ),
+        (
+            TripDestinationMismatchError(),
+            422,
+            {
+                "code": "trip_destination_mismatch",
+                "message": "A destination does not belong to this Trip",
+            },
+        ),
+        (
+            TripDestinationInUseError(),
+            409,
+            {
+                "code": "trip_destination_in_use",
+                "message": "Move or clear plans using this destination first",
+            },
+        ),
+        (
+            TripNotFoundError(),
+            404,
+            {"code": "trip_not_found", "message": "Trip not found"},
+        ),
+        (
+            TripEditForbiddenError(),
+            403,
+            {
+                "code": "trip_edit_forbidden",
+                "message": "Trip editing is not permitted",
+            },
+        ),
+        (
+            TripDateRangeExcludesPlansError(),
+            409,
+            {
+                "code": "trip_date_range_excludes_plans",
+                "message": "Move or clear plans outside the new date range first",
+            },
+        ),
+        (
+            TripRevisionConflictError({"revision": 2}),
+            409,
+            {
+                "code": "trip_revision_conflict",
+                "message": "This Trip changed after editing started",
+                "latest_values": {"revision": 2},
+            },
+        ),
+        (
+            DailyPlanNotFoundError(),
+            404,
+            {"code": "daily_plan_not_found", "message": "Daily plan not found"},
+        ),
+        (
+            DailyPlanOccupiedError(),
+            409,
+            {
+                "code": "daily_plan_occupied",
+                "message": "Target date already has a plan",
+            },
+        ),
+        (
+            DailyPlanOutOfRangeError(),
+            422,
+            {
+                "code": "daily_plan_out_of_range",
+                "message": "Date is outside the Trip",
+            },
+        ),
+        (
+            DailyPlanRevisionConflictError({"revision": 3}),
+            409,
+            {
+                "code": "daily_plan_revision_conflict",
+                "message": "This Daily plan changed after editing started",
+                "current_plan": {"revision": 3},
+            },
+        ),
+        (
+            StayNotFoundError(),
+            404,
+            {"code": "stay_not_found", "message": "Stay not found"},
+        ),
+        (
+            StayRevisionConflictError({"revision": 4}),
+            409,
+            {
+                "code": "stay_revision_conflict",
+                "message": "This Stay changed after editing started",
+                "current_stay": {"revision": 4},
+            },
+        ),
+        (
+            TimelineEntryNotFoundError(),
+            404,
+            {
+                "code": "timeline_entry_not_found",
+                "message": "Timeline entry not found",
+            },
+        ),
+        (
+            TimelineEntryRevisionConflictError({"revision": 5}),
+            409,
+            {
+                "code": "timeline_entry_revision_conflict",
+                "message": "This Timeline entry changed after editing started",
+                "latest_values": {"revision": 5},
+            },
+        ),
+        (
+            TimelineCollectionRevisionConflictError({"revision": 6}),
+            409,
+            {
+                "code": "timeline_collection_revision_conflict",
+                "message": "This Timeline changed after editing started",
+                "latest_values": {"revision": 6},
+            },
+        ),
+        (
+            TimelineOrderInvalidError(),
+            422,
+            {
+                "code": "timeline_order_invalid",
+                "message": (
+                    "Timeline order must contain every entry in chronological order"
+                ),
+            },
+        ),
+        (
+            PhotoNotFoundError(),
+            404,
+            {"code": "photo_not_found", "message": "Photo not found"},
+        ),
+        (
+            PhotoCollectionRevisionConflictError({"revision": 7}),
+            409,
+            {
+                "code": "photo_collection_revision_conflict",
+                "message": "These photos changed after editing started",
+                "latest_values": {"revision": 7},
+            },
+        ),
+        (
+            PhotoOrderInvalidError(),
+            422,
+            {
+                "code": "photo_order_invalid",
+                "message": "Photo order must contain every photo exactly once",
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio(loop_factories=["selector"])
+async def test_feature_error_handlers_preserve_the_public_envelope(
+    exception: Exception,
+    expected_status: int,
+    expected_error: dict[str, object],
+) -> None:
+    app = create_app()
+
+    @app.get("/raise-feature-error")
+    async def raise_feature_error() -> None:
+        raise exception
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/raise-feature-error")
+
+    assert response.status_code == expected_status
+    assert response.json() == {"error": expected_error}
