@@ -11,6 +11,7 @@ from tripper_api.itinerary.itinerary_daily_plan_coordinator import (
 from tripper_api.itinerary.itinerary_daily_plan_service import DailyPlanService
 from tripper_api.itinerary.itinerary_repository import ItineraryRepository
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 
 
 def get_daily_plan_command_coordinator(
@@ -22,5 +23,5 @@ def get_daily_plan_command_coordinator(
         session,
         DailyPlanService(itinerary_repository),
         DestinationRepository(session),
-        membership_repository,
+        TripAccessControl(membership_repository),
     )

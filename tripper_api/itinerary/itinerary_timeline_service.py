@@ -21,11 +21,7 @@ from tripper_api.itinerary.itinerary_timeline_errors import (
 )
 from tripper_api.itinerary.itinerary_timeline_model import TimelineEntry
 from tripper_api.itinerary.itinerary_timeline_repository import TimelineRepository
-from tripper_api.membership.membership_model import TripRole
-from tripper_api.membership.membership_read_model import TripAccess
-from tripper_api.membership.membership_repository import MembershipRepository
-from tripper_api.trip.trip_command_errors import TripEditForbiddenError
-from tripper_api.trip.trip_errors import TripNotFoundError
+from tripper_api.trip.trip_access_control import TripAccessControl
 from tripper_api.trip.trip_guide_dto import TripDetailResponse
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 
@@ -36,24 +32,14 @@ class TimelineService:
         session: AsyncSession,
         repository: TimelineRepository,
         destination_repository: DestinationRepository,
-        membership_repository: MembershipRepository,
+        access_control: TripAccessControl,
         guide_reader: TripGuideReader,
     ) -> None:
         self._session = session
         self._repository = repository
         self._destination_repository = destination_repository
-        self._membership_repository = membership_repository
+        self._access_control = access_control
         self._guide_reader = guide_reader
-
-    async def _lock_trip_for_edit(self, trip_id: UUID, account_id: UUID) -> TripAccess:
-        access = await self._membership_repository.lock_trip_and_get_membership(
-            trip_id, account_id
-        )
-        if access is None:
-            raise TripNotFoundError
-        if access.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-            raise TripEditForbiddenError
-        return access
 
     async def _validate_destination(
         self, trip_id: UUID, destination_id: UUID | None
@@ -79,7 +65,7 @@ class TimelineService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             plans = await self._repository.lock_plans(trip_id, [plan_id])
             plan = plans.get(plan_id)
             if plan is None:
@@ -121,7 +107,7 @@ class TimelineService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             plans = await self._repository.lock_plans(trip_id, [plan_id])
             plan = plans.get(plan_id)
             if plan is None:
@@ -161,7 +147,7 @@ class TimelineService:
         entry_conflict = False
         collection_conflict = False
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             plans = await self._repository.lock_plans(trip_id, [plan_id])
             plan = plans.get(plan_id)
             if plan is None:
@@ -197,7 +183,7 @@ class TimelineService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             plans = await self._repository.lock_plans(trip_id, [plan_id])
             plan = plans.get(plan_id)
             if plan is None:
@@ -235,7 +221,7 @@ class TimelineService:
     ) -> TripDetailResponse:
         conflict = False
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             plans = await self._repository.lock_plans(
                 trip_id, [source_plan_id, request.target_plan_id]
             )

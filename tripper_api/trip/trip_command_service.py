@@ -12,16 +12,15 @@ from tripper_api.itinerary.itinerary_repository import ItineraryRepository
 from tripper_api.membership.membership_dto import TripSummaryResponse
 from tripper_api.membership.membership_model import TripMembership, TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 from tripper_api.trip.trip_command_dto import (
     TripCreateRequest,
     TripDetailsUpdateRequest,
 )
 from tripper_api.trip.trip_command_errors import (
     TripDateRangeExcludesPlansError,
-    TripEditForbiddenError,
     TripRevisionConflictError,
 )
-from tripper_api.trip.trip_errors import TripNotFoundError
 from tripper_api.trip.trip_guide_dto import TripDetailResponse
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 from tripper_api.trip.trip_model import Trip
@@ -35,6 +34,7 @@ class TripCommandService:
         trip_repository: TripRepository,
         destination_repository: DestinationRepository,
         membership_repository: MembershipRepository,
+        access_control: TripAccessControl,
         itinerary_repository: ItineraryRepository,
         guide_reader: TripGuideReader,
     ) -> None:
@@ -42,6 +42,7 @@ class TripCommandService:
         self._trip_repository = trip_repository
         self._destination_repository = destination_repository
         self._membership_repository = membership_repository
+        self._access_control = access_control
         self._itinerary_repository = itinerary_repository
         self._guide_reader = guide_reader
 
@@ -97,13 +98,7 @@ class TripCommandService:
     ) -> TripDetailResponse:
         revision_conflict = False
         async with self._session.begin():
-            access = await self._membership_repository.lock_trip_and_get_membership(
-                trip_id, account_id
-            )
-            if access is None:
-                raise TripNotFoundError
-            if access.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-                raise TripEditForbiddenError
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             if access.trip.revision != request.starting_revision:
                 revision_conflict = True
             else:

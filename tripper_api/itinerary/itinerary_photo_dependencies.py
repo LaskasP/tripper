@@ -7,6 +7,7 @@ from tripper_api.core.database import get_database_session
 from tripper_api.itinerary.itinerary_photo_repository import PhotoRepository
 from tripper_api.itinerary.itinerary_photo_service import PhotoService
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 
 
@@ -17,6 +18,6 @@ def get_photo_service(
     return PhotoService(
         session,
         PhotoRepository(session),
-        membership_repository,
+        TripAccessControl(membership_repository),
         TripGuideReader(session, membership_repository),
     )

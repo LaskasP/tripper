@@ -8,6 +8,7 @@ from tripper_api.itinerary.itinerary_repository import ItineraryRepository
 from tripper_api.itinerary.itinerary_stay_repository import StayRepository
 from tripper_api.itinerary.itinerary_stay_service import StayService
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 
 
@@ -19,6 +20,6 @@ def get_stay_service(
         session,
         ItineraryRepository(session),
         StayRepository(session),
-        membership_repository,
+        TripAccessControl(membership_repository),
         TripGuideReader(session, membership_repository),
     )

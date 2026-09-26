@@ -16,11 +16,8 @@ from tripper_api.itinerary.itinerary_daily_plan_errors import (
     DailyPlanRevisionConflictError,
 )
 from tripper_api.itinerary.itinerary_daily_plan_service import DailyPlanService
-from tripper_api.membership.membership_model import TripRole
 from tripper_api.membership.membership_read_model import TripAccess
-from tripper_api.membership.membership_repository import MembershipRepository
-from tripper_api.trip.trip_command_errors import TripEditForbiddenError
-from tripper_api.trip.trip_errors import TripNotFoundError
+from tripper_api.trip.trip_access_control import TripAccessControl
 
 
 class DailyPlanCommandCoordinator:
@@ -31,22 +28,12 @@ class DailyPlanCommandCoordinator:
         session: AsyncSession,
         daily_plan_service: DailyPlanService,
         destination_repository: DestinationRepository,
-        membership_repository: MembershipRepository,
+        access_control: TripAccessControl,
     ) -> None:
         self._session = session
         self._daily_plan_service = daily_plan_service
         self._destination_repository = destination_repository
-        self._membership_repository = membership_repository
-
-    async def _lock_trip_for_edit(self, trip_id: UUID, account_id: UUID) -> TripAccess:
-        access = await self._membership_repository.lock_trip_and_get_membership(
-            trip_id, account_id
-        )
-        if access is None:
-            raise TripNotFoundError
-        if access.role not in {TripRole.CREATOR, TripRole.CONTRIBUTOR}:
-            raise TripEditForbiddenError
-        return access
+        self._access_control = access_control
 
     @staticmethod
     def _validate_date(access: TripAccess, plan_date: date) -> None:
@@ -62,7 +49,7 @@ class DailyPlanCommandCoordinator:
         request: DailyPlanWriteRequest,
     ) -> DailyPlanResponse:
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             self._validate_date(access, plan_date)
             if not await self._destination_repository.belongs_to_trip(
                 trip_id, request.destination_id
@@ -100,7 +87,7 @@ class DailyPlanCommandCoordinator:
         request: DailyPlanRevisionRequest,
     ) -> None:
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             await self._daily_plan_service.clear(
                 trip_id=trip_id,
                 plan_date=plan_date,
@@ -117,7 +104,7 @@ class DailyPlanCommandCoordinator:
         request: DailyPlanMoveRequest,
     ) -> DailyPlanResponse:
         async with self._session.begin():
-            access = await self._lock_trip_for_edit(trip_id, account_id)
+            access = await self._access_control.lock_for_edit(trip_id, account_id)
             self._validate_date(access, request.target_date)
             response = await self._daily_plan_service.move(
                 trip_id=trip_id,

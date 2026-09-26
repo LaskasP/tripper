@@ -8,6 +8,7 @@ from tripper_api.destination.destination_repository import DestinationRepository
 from tripper_api.itinerary.itinerary_timeline_repository import TimelineRepository
 from tripper_api.itinerary.itinerary_timeline_service import TimelineService
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 from tripper_api.trip.trip_guide_reader import TripGuideReader
 
 
@@ -19,6 +20,6 @@ def get_timeline_service(
         session,
         TimelineRepository(session),
         DestinationRepository(session),
-        membership_repository,
+        TripAccessControl(membership_repository),
         TripGuideReader(session, membership_repository),
     )
