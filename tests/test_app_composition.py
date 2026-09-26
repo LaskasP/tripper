@@ -370,7 +370,11 @@ async def test_feature_error_handlers_preserve_the_public_envelope(
     expected_status: int,
     expected_error: dict[str, object],
 ) -> None:
-    app = create_app()
+    app = FastAPI()
+    register_auth_error_handlers(app)
+    register_destination_error_handlers(app)
+    register_trip_error_handlers(app)
+    register_itinerary_error_handlers(app)
 
     @app.get("/raise-feature-error")
     async def raise_feature_error() -> None:
