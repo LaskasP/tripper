@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from tripper_api.auth.auth_controller import router as auth_router
+from tripper_api.core.config_controller import router as config_router
 from tripper_api.invitation.invitation_controller import (
     delivery_router,
 )
@@ -21,10 +22,12 @@ from tripper_api.trip.trip_command_controller import router as trip_command_rout
 from tripper_api.trip.trip_controller import router as trip_router
 
 
-def register_api_routes(app: FastAPI) -> None:
+def register_api_routes(app: FastAPI, *, invitations_enabled: bool) -> None:
+    app.include_router(config_router)
     app.include_router(auth_router)
-    app.include_router(invitation_router)
-    app.include_router(delivery_router)
+    if invitations_enabled:
+        app.include_router(invitation_router)
+        app.include_router(delivery_router)
     app.include_router(membership_router)
     app.include_router(trip_command_router)
     app.include_router(daily_plan_router)

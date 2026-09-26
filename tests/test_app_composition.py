@@ -1,4 +1,5 @@
 import pytest
+from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
@@ -9,6 +10,7 @@ from tripper_api.auth.auth_errors import (
     CsrfValidationError,
     InvalidGoogleCredentialError,
 )
+from tripper_api.core.config import Settings
 from tripper_api.core.error_handler import register_error_handlers
 from tripper_api.destination.destination_error_handler import (
     register_destination_error_handlers,
@@ -156,7 +158,14 @@ def test_core_error_handlers_do_not_register_feature_exceptions() -> None:
 
 
 def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
-    app = create_app()
+    app = create_app(
+        Settings(
+            database_url=(
+                "postgresql+psycopg_async://tripper:secret@localhost/tripper"
+            ),
+            invitation_token_key=("--GlAsI7zn2JODd7UGI2F-oaV8iSIoNlxyMGtGSshps="),
+        )
+    )
 
     api_routes = {
         (method.upper(), path)
@@ -164,6 +173,7 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
         for method in operations
     }
     assert api_routes == {
+        ("GET", "/api/config"),
         ("GET", "/api/auth/google/config"),
         ("POST", "/api/auth/google"),
         ("GET", "/api/auth/session"),
@@ -240,6 +250,39 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
         InvalidDeliveryWebhookError,
     }
     assert feature_errors <= app.exception_handlers.keys()
+
+
+def test_disabled_invitation_feature_is_absent_from_the_api_surface() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg_async://tripper:secret@localhost/tripper",
+        invitations_enabled=False,
+    )
+
+    app = create_app(settings)
+
+    paths = app.openapi()["paths"]
+    assert "/api/config" in paths
+    assert not any("invitations" in path for path in paths)
+    assert "/api/email/mailgun/events" not in paths
+
+
+@pytest.mark.asyncio(loop_factories=["selector"])
+async def test_application_config_exposes_disabled_invitations(
+    database_settings: Settings,
+) -> None:
+    settings = Settings(
+        database_url=database_settings.database_url,
+        invitations_enabled=False,
+    )
+    app = create_app(settings)
+
+    async with LifespanManager(app), AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/config")
+
+    assert response.status_code == 200
+    assert response.json() == {"invitations_enabled": False}
 
 
 @pytest.mark.parametrize(

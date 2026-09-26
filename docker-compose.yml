@@ -22,9 +22,10 @@ services:
       TRIPPER_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@postgres:5432/tripper
       TRIPPER_DATABASE_ECHO: "false"
       TRIPPER_GOOGLE_CLIENT_ID: ${TRIPPER_GOOGLE_CLIENT_ID:-replace-me.apps.googleusercontent.com}
-      TRIPPER_INVITATION_TOKEN_KEY: ${TRIPPER_INVITATION_TOKEN_KEY:?set invitation token key}
+      TRIPPER_INVITATIONS_ENABLED: ${TRIPPER_INVITATIONS_ENABLED:-false}
+      TRIPPER_INVITATION_TOKEN_KEY: ${TRIPPER_INVITATION_TOKEN_KEY:-}
       TRIPPER_INVITATION_BASE_URL: ${TRIPPER_INVITATION_BASE_URL:-http://localhost:8080/tripper/invitations}
-      TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY: ${TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY:?set Mailgun webhook signing key}
+      TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY: ${TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,12 +42,13 @@ services:
       target: api
     environment:
       TRIPPER_DATABASE_URL: postgresql+psycopg_async://tripper:tripper@postgres:5432/tripper
-      TRIPPER_INVITATION_TOKEN_KEY: ${TRIPPER_INVITATION_TOKEN_KEY:?set invitation token key}
+      TRIPPER_INVITATIONS_ENABLED: ${TRIPPER_INVITATIONS_ENABLED:-false}
+      TRIPPER_INVITATION_TOKEN_KEY: ${TRIPPER_INVITATION_TOKEN_KEY:-}
       TRIPPER_INVITATION_BASE_URL: ${TRIPPER_INVITATION_BASE_URL:-http://localhost:8080/tripper/invitations}
-      TRIPPER_MAILGUN_API_KEY: ${TRIPPER_MAILGUN_API_KEY:?set Mailgun API key}
-      TRIPPER_MAILGUN_DOMAIN: ${TRIPPER_MAILGUN_DOMAIN:?set Mailgun domain}
-      TRIPPER_INVITATION_FROM_EMAIL: ${TRIPPER_INVITATION_FROM_EMAIL:?set invitation sender}
-      TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY: ${TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY:?set Mailgun webhook signing key}
+      TRIPPER_MAILGUN_API_KEY: ${TRIPPER_MAILGUN_API_KEY:-}
+      TRIPPER_MAILGUN_DOMAIN: ${TRIPPER_MAILGUN_DOMAIN:-}
+      TRIPPER_INVITATION_FROM_EMAIL: ${TRIPPER_INVITATION_FROM_EMAIL:-}
+      TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY: ${TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

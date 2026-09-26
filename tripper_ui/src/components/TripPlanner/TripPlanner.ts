@@ -28,6 +28,7 @@ import {
   type TripDetailsUpdate,
 } from "../../lib/trips";
 import { loadCurrentAccount, renderGoogleSignIn } from "../../lib/auth";
+import { loadApplicationConfig } from "../../lib/config";
 import {
   clearDailyPlanDrafts,
   clearPhotoDrafts,
@@ -321,6 +322,7 @@ function renderEditorWorkspace(
   app: HTMLElement,
   initialTrip: TripDetail,
   accountId: string,
+  invitationsEnabled: boolean,
 ): void {
   let trip = initialTrip;
   const recovered = recoveredDetailsDraft(accountId, trip.id, trip.revision);
@@ -1865,7 +1867,9 @@ function renderEditorWorkspace(
   const showPeople = (): void => {
     const roster = createRoster(trip);
     content.replaceChildren(roster);
-    if (trip.role === "creator") content.appendChild(createInvitationManager(trip));
+    if (trip.role === "creator" && invitationsEnabled) {
+      content.appendChild(createInvitationManager(trip));
+    }
   };
 
   const showPublish = (): void => {
@@ -2454,9 +2458,10 @@ export async function renderTripPlanner(
   loading.textContent = "Loading trip…";
   app.replaceChildren(loading);
   try {
-    const [account, trip] = await Promise.all([
+    const [account, trip, config] = await Promise.all([
       loadCurrentAccount(),
       loadParticipantTrip(tripId),
+      loadApplicationConfig(),
     ]);
     if (trip.role === "traveller") {
       clearTripDetailsDrafts(trip.id);
@@ -2466,7 +2471,7 @@ export async function renderTripPlanner(
       return;
     }
     document.title = `Plan ${trip.short_name || trip.name} · Tripper`;
-    renderEditorWorkspace(app, trip, account.id);
+    renderEditorWorkspace(app, trip, account.id, config.invitations_enabled);
   } catch (caught) {
     if (caught instanceof ApiError && [403, 404].includes(caught.status)) {
       clearTripDetailsDrafts(tripId);

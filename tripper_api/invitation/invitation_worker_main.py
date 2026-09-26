@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import httpx
 
@@ -7,9 +8,14 @@ from tripper_api.core.database import Database
 from tripper_api.invitation.invitation_provider import MailgunEmailProvider
 from tripper_api.invitation.invitation_worker import InvitationOutboxWorker
 
+logger = logging.getLogger(__name__)
 
-async def run() -> None:
-    settings = Settings()
+
+async def run(settings: Settings | None = None) -> None:
+    settings = settings or Settings()
+    if not settings.invitations_enabled:
+        logger.info("Invitation delivery is disabled")
+        return
     if (
         settings.mailgun_api_key is None
         or settings.mailgun_domain is None

@@ -38,6 +38,12 @@ Run the complete application with Docker Compose:
 docker compose up --build
 ```
 
+Invitations are disabled by default in the local Compose stack. With the switch off,
+the invitation API, Mailgun webhook, delivery worker, and invitation controls are not
+available, and no invitation or Mailgun secrets are required. To exercise invitation
+delivery locally, set `TRIPPER_INVITATIONS_ENABLED=true` and fill in the invitation and
+Mailgun values from `.env.example` before starting Compose.
+
 Open the UI at `http://localhost:8080/tripper/`. The API is available directly
 at `http://localhost:8000`, with Swagger docs at `http://localhost:8000/docs`.
 The same docs are also proxied through the UI at `http://localhost:8080/docs`.

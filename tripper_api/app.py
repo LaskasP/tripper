@@ -16,14 +16,14 @@ def create_app(
     settings: Settings | None = None,
     verify_google_identity: Callable[[str], Awaitable[GoogleIdentity]] | None = None,
 ) -> FastAPI:
+    resolved_settings = settings or Settings()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        resolved_settings = settings or Settings()
         database = Database(resolved_settings)
         google_client = httpx.AsyncClient(timeout=10)
         await database.start()
         app.state.database = database
-        app.state.settings = resolved_settings
         google_verifier = GoogleIdentityVerifier(
             resolved_settings.google_client_id, google_client
         )
@@ -37,7 +37,8 @@ def create_app(
             await database.stop()
 
     app = FastAPI(title="Tripper API", lifespan=lifespan)
-    register_api_routes(app)
+    app.state.settings = resolved_settings
+    register_api_routes(app, invitations_enabled=resolved_settings.invitations_enabled)
     register_api_error_handlers(app)
 
     return app
