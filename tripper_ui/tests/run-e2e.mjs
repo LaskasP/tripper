@@ -12,6 +12,9 @@ const testEnvironment = {
   TRIPPER_DATABASE_URL: databaseUrl,
   TRIPPER_TEST_DATABASE_URL: databaseUrl,
   TRIPPER_GOOGLE_CLIENT_ID: 'test-client-id',
+  TRIPPER_INVITATION_TOKEN_KEY:
+    '--GlAsI7zn2JODd7UGI2F-oaV8iSIoNlxyMGtGSshps=',
+  TRIPPER_MAILGUN_WEBHOOK_SIGNING_KEY: 'test-webhook-key',
 };
 const python = path.join(
   repositoryRoot,

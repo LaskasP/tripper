@@ -3,6 +3,7 @@ from sqlalchemy import MetaData
 from tripper_api.auth import auth_model  # noqa: F401
 from tripper_api.core.models import Base
 from tripper_api.destination import destination_model  # noqa: F401
+from tripper_api.invitation import invitation_model  # noqa: F401
 from tripper_api.itinerary import (
     itinerary_daily_plan_model,  # noqa: F401
     itinerary_photo_model,  # noqa: F401

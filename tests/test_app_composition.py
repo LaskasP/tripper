@@ -17,6 +17,15 @@ from tripper_api.destination.destination_errors import (
     TripDestinationInUseError,
     TripDestinationMismatchError,
 )
+from tripper_api.invitation.invitation_error_handler import (
+    register_invitation_error_handlers,
+)
+from tripper_api.invitation.invitation_errors import (
+    ActiveInvitationExistsError,
+    InvalidDeliveryWebhookError,
+    InvitationForbiddenError,
+    InvitationNotFoundError,
+)
 from tripper_api.itinerary.itinerary_daily_plan_errors import (
     DailyPlanNotFoundError,
     DailyPlanOccupiedError,
@@ -121,6 +130,17 @@ def test_publication_error_handlers_are_registered_by_the_publication_feature() 
     assert PublicationRevisionConflictError in app.exception_handlers
 
 
+def test_invitation_error_handlers_are_registered_by_the_invitation_feature() -> None:
+    app = FastAPI()
+
+    register_invitation_error_handlers(app)
+
+    assert InvitationForbiddenError in app.exception_handlers
+    assert InvitationNotFoundError in app.exception_handlers
+    assert ActiveInvitationExistsError in app.exception_handlers
+    assert InvalidDeliveryWebhookError in app.exception_handlers
+
+
 def test_core_error_handlers_do_not_register_feature_exceptions() -> None:
     app = FastAPI()
 
@@ -149,6 +169,11 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
         ("GET", "/api/auth/session"),
         ("POST", "/api/auth/sign-out"),
         ("GET", "/api/me/trips"),
+        ("POST", "/api/email/mailgun/events"),
+        ("GET", "/api/trips/{trip_id}/invitations"),
+        ("POST", "/api/trips/{trip_id}/invitations"),
+        ("DELETE", "/api/trips/{trip_id}/invitations/{invitation_id}"),
+        ("POST", "/api/trips/{trip_id}/invitations/{invitation_id}/replace"),
         ("POST", "/api/trips"),
         ("GET", "/api/trips/{trip_id}"),
         ("GET", "/api/trips/{trip_id}/publication"),
@@ -209,6 +234,10 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
         PublicationForbiddenError,
         TripNotReadyToPublishError,
         PublicationRevisionConflictError,
+        InvitationForbiddenError,
+        InvitationNotFoundError,
+        ActiveInvitationExistsError,
+        InvalidDeliveryWebhookError,
     }
     assert feature_errors <= app.exception_handlers.keys()
 
@@ -308,6 +337,35 @@ def test_app_factory_composes_every_feature_route_and_error_handler() -> None:
             {
                 "code": "publication_revision_conflict",
                 "message": "Publication changed after this page loaded",
+            },
+        ),
+        (
+            InvitationForbiddenError(),
+            403,
+            {
+                "code": "invitation_forbidden",
+                "message": "Only the Trip Creator can manage invitations",
+            },
+        ),
+        (
+            InvitationNotFoundError(),
+            404,
+            {"code": "invitation_not_found", "message": "Invitation not found"},
+        ),
+        (
+            ActiveInvitationExistsError(),
+            409,
+            {
+                "code": "active_invitation_exists",
+                "message": "An active invitation already exists for this email",
+            },
+        ),
+        (
+            InvalidDeliveryWebhookError(),
+            401,
+            {
+                "code": "invalid_delivery_webhook",
+                "message": "Invalid delivery webhook",
             },
         ),
         (
@@ -426,6 +484,7 @@ async def test_feature_error_handlers_preserve_the_public_envelope(
     register_trip_error_handlers(app)
     register_itinerary_error_handlers(app)
     register_publication_error_handlers(app)
+    register_invitation_error_handlers(app)
 
     @app.get("/raise-feature-error")
     async def raise_feature_error() -> None:

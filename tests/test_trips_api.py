@@ -45,10 +45,14 @@ async def app_client(
             await connection.execute(
                 text(
                     "INSERT INTO accounts (id, issuer, subject, email, display_name) "
-                    "VALUES (:id, 'test', :subject, 'test@example.com', 'Test User') "
+                    "VALUES (:id, 'test', :subject, :email, 'Test User') "
                     "ON CONFLICT (id) DO NOTHING"
                 ),
-                {"id": UUID(user["id"]), "subject": user["id"]},
+                {
+                    "id": UUID(user["id"]),
+                    "subject": user["id"],
+                    "email": user.get("email", "test@example.com"),
+                },
             )
         await engine.dispose()
     app = create_app(settings)
@@ -56,7 +60,7 @@ async def app_client(
         app.dependency_overrides[require_current_user] = lambda: AuthenticatedUser(
             id=UUID(user["id"]),
             session_id=UUID("00000000-0000-0000-0000-000000000001"),
-            email="test@example.com",
+            email=user.get("email", "test@example.com"),
             display_name="Test User",
         )
 

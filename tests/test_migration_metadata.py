@@ -2,6 +2,11 @@ from sqlalchemy import CheckConstraint, UniqueConstraint, inspect
 
 from migrations.model_metadata import target_metadata
 from tripper_api.destination.destination_model import Destination
+from tripper_api.invitation.invitation_model import (
+    InvitationEmailEvent,
+    InvitationEmailOutbox,
+    TripInvitation,
+)
 from tripper_api.itinerary.itinerary_daily_plan_model import DailyPlan
 from tripper_api.itinerary.itinerary_photo_model import Photo
 from tripper_api.itinerary.itinerary_stay_model import Stay
@@ -19,6 +24,9 @@ def test_migration_metadata_registers_every_model_in_its_owning_module() -> None
         "timeline_entries": TimelineEntry,
         "stays": Stay,
         "photos": Photo,
+        "trip_invitations": TripInvitation,
+        "invitation_email_outbox": InvitationEmailOutbox,
+        "invitation_email_events": InvitationEmailEvent,
     }
 
     assert {"accounts", "sessions", *expected_models} == set(target_metadata.tables)
@@ -32,6 +40,9 @@ def test_migration_metadata_registers_every_model_in_its_owning_module() -> None
         "timeline_entries": "tripper_api.itinerary.itinerary_timeline_model",
         "stays": "tripper_api.itinerary.itinerary_stay_model",
         "photos": "tripper_api.itinerary.itinerary_photo_model",
+        "trip_invitations": "tripper_api.invitation.invitation_model",
+        "invitation_email_outbox": "tripper_api.invitation.invitation_model",
+        "invitation_email_events": "tripper_api.invitation.invitation_model",
     }
 
 
@@ -101,6 +112,39 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "revision",
         },
         "photos": {"id", "daily_plan_id", "url", "caption", "position", "revision"},
+        "trip_invitations": {
+            "id",
+            "trip_id",
+            "email",
+            "role",
+            "token_hash",
+            "created_at",
+            "expires_at",
+            "revoked_at",
+            "replaced_at",
+            "accepted_at",
+        },
+        "invitation_email_outbox": {
+            "id",
+            "invitation_id",
+            "deduplication_key",
+            "recipient_email",
+            "status",
+            "created_at",
+            "next_attempt_at",
+            "attempt_count",
+            "claimed_at",
+            "sent_at",
+            "last_error_code",
+        },
+        "invitation_email_events": {
+            "id",
+            "outbox_id",
+            "provider_event_id",
+            "event_type",
+            "occurred_at",
+            "created_at",
+        },
     }
     expected_column_signatures = {
         "trips": {
@@ -180,6 +224,39 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "position": ("INTEGER", False, False, None),
             "revision": ("INTEGER", False, False, "1"),
         },
+        "trip_invitations": {
+            "id": ("UUID", False, True, None),
+            "trip_id": ("UUID", False, False, None),
+            "email": ("VARCHAR(320)", False, False, None),
+            "role": ("VARCHAR(20)", False, False, None),
+            "token_hash": ("VARCHAR(64)", False, False, None),
+            "created_at": ("DATETIME", False, False, None),
+            "expires_at": ("DATETIME", False, False, None),
+            "revoked_at": ("DATETIME", True, False, None),
+            "replaced_at": ("DATETIME", True, False, None),
+            "accepted_at": ("DATETIME", True, False, None),
+        },
+        "invitation_email_outbox": {
+            "id": ("UUID", False, True, None),
+            "invitation_id": ("UUID", False, False, None),
+            "deduplication_key": ("VARCHAR(100)", False, False, None),
+            "recipient_email": ("VARCHAR(320)", False, False, None),
+            "status": ("VARCHAR(20)", False, False, None),
+            "created_at": ("DATETIME", False, False, None),
+            "next_attempt_at": ("DATETIME", False, False, None),
+            "attempt_count": ("INTEGER", False, False, "0"),
+            "claimed_at": ("DATETIME", True, False, None),
+            "sent_at": ("DATETIME", True, False, None),
+            "last_error_code": ("VARCHAR(80)", True, False, None),
+        },
+        "invitation_email_events": {
+            "id": ("UUID", False, True, None),
+            "outbox_id": ("UUID", False, False, None),
+            "provider_event_id": ("VARCHAR(200)", False, False, None),
+            "event_type": ("VARCHAR(30)", False, False, None),
+            "occurred_at": ("DATETIME", False, False, None),
+            "created_at": ("DATETIME", False, False, None),
+        },
     }
     expected_named_constraints = {
         "trips": {
@@ -222,6 +299,16 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "positive_photo_revision",
             "uq_photo_daily_plan_position",
         },
+        "trip_invitations": {
+            None,
+            "valid_invitation_role",
+            "valid_invitation_expiry",
+        },
+        "invitation_email_outbox": {None, "valid_invitation_outbox_status"},
+        "invitation_email_events": {
+            None,
+            "valid_invitation_delivery_event_type",
+        },
     }
 
     for table_name, columns in expected_columns.items():
@@ -251,6 +338,15 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
         "contributor",
         "traveller",
     ]
+    invitations = target_metadata.tables["trip_invitations"]
+    assert {index.name for index in invitations.indexes} == {
+        "uq_active_invitation_trip_email"
+    }
+    assert list(invitations.c.role.type.enums) == [
+        "creator",
+        "contributor",
+        "traveller",
+    ]
 
 
 def test_moved_table_metadata_preserves_important_foreign_keys() -> None:
@@ -270,6 +366,13 @@ def test_moved_table_metadata_preserves_important_foreign_keys() -> None:
         },
         "stays": {"daily_plan_id": (None, "daily_plans.id", "CASCADE")},
         "photos": {"daily_plan_id": (None, "daily_plans.id", "CASCADE")},
+        "trip_invitations": {"trip_id": (None, "trips.id", "CASCADE")},
+        "invitation_email_outbox": {
+            "invitation_id": (None, "trip_invitations.id", "CASCADE")
+        },
+        "invitation_email_events": {
+            "outbox_id": (None, "invitation_email_outbox.id", "CASCADE")
+        },
     }
 
     for table_name, expected in expected_foreign_keys.items():
@@ -302,3 +405,6 @@ def test_guide_relationships_are_explicit_and_forbid_implicit_lazy_loading() -> 
 
     assert not inspect(TripMembership).relationships
     assert not inspect(Destination).relationships
+    assert not inspect(TripInvitation).relationships
+    assert not inspect(InvitationEmailOutbox).relationships
+    assert not inspect(InvitationEmailEvent).relationships

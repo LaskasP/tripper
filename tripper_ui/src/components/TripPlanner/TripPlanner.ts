@@ -42,6 +42,7 @@ import {
   timelineEntryDraftKey,
   timelineEntryDraftPrefix,
 } from "../../lib/drafts";
+import { createInvitationManager } from "./InvitationManager";
 
 type WorkspaceSection = "plan" | "details" | "people" | "publish";
 
@@ -1861,7 +1862,11 @@ function renderEditorWorkspace(
     content.replaceChildren(panel);
   };
 
-  const showPeople = (): void => content.replaceChildren(createRoster(trip));
+  const showPeople = (): void => {
+    const roster = createRoster(trip);
+    content.replaceChildren(roster);
+    if (trip.role === "creator") content.appendChild(createInvitationManager(trip));
+  };
 
   const showPublish = (): void => {
     const panel = document.createElement("div");

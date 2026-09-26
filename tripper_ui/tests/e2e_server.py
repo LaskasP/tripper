@@ -20,6 +20,8 @@ settings = Settings(
         "postgresql+psycopg_async://tripper:tripper@127.0.0.1:55432/tripper_test",
     ),
     google_client_id="test-client-id",
+    invitation_token_key=("--GlAsI7zn2JODd7UGI2F-oaV8iSIoNlxyMGtGSshps="),
+    mailgun_webhook_signing_key="test-webhook-key",
 )
 
 

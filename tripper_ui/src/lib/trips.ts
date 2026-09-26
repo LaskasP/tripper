@@ -179,6 +179,15 @@ export interface PublicationState {
   revision: number;
 }
 
+export interface TripInvitation {
+  id: string;
+  email: string;
+  role: Exclude<TripRole, "creator">;
+  created_at: string;
+  expires_at: string;
+  delivery_status: "pending" | "delivering" | "sent" | "failed" | "ambiguous" | "cancelled" | "delivered" | "complained";
+}
+
 export interface DailyPlanResponse {
   id: string;
   destination_id: string;
@@ -315,6 +324,43 @@ export function rotatePublicLink(
       method: "POST",
       body: JSON.stringify({ starting_revision: startingRevision }),
     },
+  );
+}
+
+export function loadInvitations(tripId: string): Promise<TripInvitation[]> {
+  return apiRequest<TripInvitation[]>(
+    `/api/trips/${encodeURIComponent(tripId)}/invitations`,
+  );
+}
+
+export function createInvitation(
+  tripId: string,
+  email: string,
+  role: Exclude<TripRole, "creator">,
+): Promise<TripInvitation> {
+  return apiRequest<TripInvitation>(
+    `/api/trips/${encodeURIComponent(tripId)}/invitations`,
+    { method: "POST", body: JSON.stringify({ email, role }) },
+  );
+}
+
+export function revokeInvitation(
+  tripId: string,
+  invitationId: string,
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/trips/${encodeURIComponent(tripId)}/invitations/${encodeURIComponent(invitationId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function replaceInvitation(
+  tripId: string,
+  invitationId: string,
+): Promise<TripInvitation> {
+  return apiRequest<TripInvitation>(
+    `/api/trips/${encodeURIComponent(tripId)}/invitations/${encodeURIComponent(invitationId)}/replace`,
+    { method: "POST" },
   );
 }
 

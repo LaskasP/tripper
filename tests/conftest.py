@@ -28,6 +28,7 @@ def pytest_asyncio_loop_factories(
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+psycopg_async://tripper:tripper@127.0.0.1:55432/tripper_test"
 )
+TEST_INVITATION_TOKEN_KEY = "--GlAsI7zn2JODd7UGI2F-oaV8iSIoNlxyMGtGSshps="
 
 
 def _test_database_url() -> str:
@@ -46,7 +47,12 @@ def database_settings() -> Iterator[Settings]:
     config = Config("alembic.ini")
     config.attributes["database_url"] = database_url
     command.upgrade(config, "head")
-    yield Settings(database_url=database_url, google_client_id="test-client-id")
+    yield Settings(
+        database_url=database_url,
+        google_client_id="test-client-id",
+        invitation_token_key=TEST_INVITATION_TOKEN_KEY,
+        mailgun_webhook_signing_key="test-webhook-key",
+    )
 
 
 @pytest_asyncio.fixture
