@@ -95,3 +95,51 @@ class TripDetailResponse(BaseModel):
     calendar: list[TripCalendarDateResponse]
     daily_plans: list[DailyPlanResponse]
     roster: list[TripRosterMemberResponse]
+
+
+class PublicTimelineEntryResponse(BaseModel):
+    time: LocalTime
+    timezone: str
+    title: str
+    description: str
+    location: GuideLocationResponse | None
+    location_name: str | None
+
+
+class PublicStayResponse(BaseModel):
+    name: str
+    address: str
+    location: GuideLocationResponse | None
+    check_in: LocalTime | None
+    check_out: LocalTime | None
+    public_listing_url: str | None
+    booking_platform: str | None
+
+
+class PublicPhotoResponse(BaseModel):
+    url: str
+    caption: str
+
+
+class PublicDailyPlanResponse(BaseModel):
+    date: date
+    day_number: int
+    title: str
+    summary: str
+    background_image: str
+    stay: PublicStayResponse | None
+    timeline: list[PublicTimelineEntryResponse]
+    photos: list[PublicPhotoResponse]
+
+
+class PublicTripGuideResponse(BaseModel):
+    name: str
+    destination: str
+    short_name: str
+    description: str
+    timezone: str
+    location: GuideLocationResponse | None
+    start_date: date
+    end_date: date
+    calendar: list[TripCalendarDateResponse]
+    daily_plans: list[PublicDailyPlanResponse]

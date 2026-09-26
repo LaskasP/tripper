@@ -1,1 +1,1 @@
-export { renderGuide, renderParticipantGuide } from "./Guide";
+export { renderGuide, renderParticipantGuide, renderPublicGuide } from "./Guide";

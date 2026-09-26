@@ -59,6 +59,12 @@ def participant_guide_page(trip_id: str) -> FileResponse:
     return FileResponse(DIST_DIR / "index.html")
 
 
+@app.get("/g/{public_token}", include_in_schema=False)
+def public_guide_page(public_token: str) -> FileResponse:
+    del public_token
+    return FileResponse(DIST_DIR / "index.html")
+
+
 app.mount("/tripper", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
 
 

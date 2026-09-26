@@ -4,7 +4,16 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Integer, String, Text, text
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +30,10 @@ class Trip(Base):
         CheckConstraint("start_date <= end_date", name="valid_trip_date_range"),
         CheckConstraint("revision > 0", name="positive_trip_revision"),
         CheckConstraint("content_revision > 0", name="positive_trip_content_revision"),
+        CheckConstraint(
+            "publication_revision > 0", name="positive_trip_publication_revision"
+        ),
+        UniqueConstraint("public_token", name="uq_trips_public_token"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -33,6 +46,11 @@ class Trip(Base):
     end_date: Mapped[date] = mapped_column(Date)
     revision: Mapped[int] = mapped_column(Integer, server_default="1")
     content_revision: Mapped[int] = mapped_column(Integer, server_default="1")
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    publication_revision: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
     )

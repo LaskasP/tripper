@@ -20,6 +20,11 @@ from tripper_api.trip.trip_guide_dto import (
     DestinationDetailsResponse,
     GuideLocationResponse,
     PhotoResponse,
+    PublicDailyPlanResponse,
+    PublicPhotoResponse,
+    PublicStayResponse,
+    PublicTimelineEntryResponse,
+    PublicTripGuideResponse,
     StayResponse,
     TimelineEntryResponse,
     TripCalendarDateResponse,
@@ -115,6 +120,19 @@ class TripGuideReader:
                 .where(DailyPlan.trip_id == trip_id, DailyPlan.id == plan_id)
             )
             return _stay_response(stay, stay.revision) if stay is not None else None
+
+    async def get_public_guide(self, public_token: str) -> PublicTripGuideResponse:
+        async with self._session.begin():
+            trip_id = await self._session.scalar(
+                select(Trip.id).where(
+                    Trip.public_token == public_token,
+                    Trip.published_at.is_not(None),
+                )
+            )
+            if trip_id is None:
+                raise TripNotFoundError
+            trip = await self._load_content(trip_id)
+            return self._to_public_response(trip)
 
     async def _load_content(self, trip_id: UUID) -> Trip:
         trip = await self._session.scalar(
@@ -346,5 +364,75 @@ class TripGuideReader:
             roster=[
                 TripRosterMemberResponse(display_name=display_name, role=member_role)
                 for display_name, member_role in roster
+            ],
+        )
+
+    @staticmethod
+    def _to_public_response(trip: Trip) -> PublicTripGuideResponse:
+        primary_destination = trip.destinations[0]
+        destination_timezones = {
+            destination.id: destination.timezone for destination in trip.destinations
+        }
+        return PublicTripGuideResponse(
+            name=trip.name,
+            destination=primary_destination.name,
+            short_name=trip.short_name,
+            description=trip.description,
+            timezone=primary_destination.timezone,
+            location=_location(
+                primary_destination.latitude, primary_destination.longitude
+            ),
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            calendar=[
+                TripCalendarDateResponse(
+                    date=trip.start_date + timedelta(days=offset),
+                    day_number=offset + 1,
+                    is_planned=any(
+                        plan.date == trip.start_date + timedelta(days=offset)
+                        for plan in trip.daily_plans
+                    ),
+                )
+                for offset in range((trip.end_date - trip.start_date).days + 1)
+            ],
+            daily_plans=[
+                PublicDailyPlanResponse(
+                    date=plan.date,
+                    day_number=(plan.date - trip.start_date).days + 1,
+                    title=plan.title,
+                    summary=plan.summary,
+                    background_image=plan.background_image,
+                    stay=(
+                        PublicStayResponse(
+                            name=plan.stay.name,
+                            address=plan.stay.address,
+                            location=_location(plan.stay.latitude, plan.stay.longitude),
+                            check_in=plan.stay.check_in,
+                            check_out=plan.stay.check_out,
+                            public_listing_url=plan.stay.public_listing_url,
+                            booking_platform=plan.stay.booking_platform,
+                        )
+                        if plan.stay is not None
+                        else None
+                    ),
+                    timeline=[
+                        PublicTimelineEntryResponse(
+                            time=entry.local_time,
+                            timezone=destination_timezones[
+                                entry.destination_id or plan.destination_id
+                            ],
+                            title=entry.title,
+                            description=entry.description,
+                            location=_location(entry.latitude, entry.longitude),
+                            location_name=entry.location_name,
+                        )
+                        for entry in plan.timeline_entries
+                    ],
+                    photos=[
+                        PublicPhotoResponse(url=photo.url, caption=photo.caption)
+                        for photo in plan.photos
+                    ],
+                )
+                for plan in trip.daily_plans
             ],
         )

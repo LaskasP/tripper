@@ -386,6 +386,75 @@
   color: var(--color-muted);
 }
 
+.publication-panel {
+  display: grid;
+  gap: 1rem;
+  max-width: 44rem;
+}
+
+.publication-panel h1 {
+  margin-bottom: 0;
+}
+
+.publication-panel__status {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.publication-panel__disclosure {
+  padding: 1rem;
+  border: 1px solid rgba(255, 204, 101, 0.45);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  background: rgba(255, 204, 101, 0.08);
+}
+
+.publication-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.publication-panel__actions button,
+.publication-panel__link,
+.publication-panel__preview-link {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  color: #fff;
+  background: var(--glass-bg);
+  font: inherit;
+  font-weight: 700;
+}
+
+.publication-panel__actions button {
+  cursor: pointer;
+}
+
+.publication-panel__actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.publication-panel__actions .publication-panel__primary {
+  color: #111;
+  background: #fff;
+}
+
+.publication-panel__link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publication-panel__preview-link {
+  width: fit-content;
+  text-decoration: none;
+}
+
 .trip-details-form__actions {
   position: sticky;
   bottom: 0;

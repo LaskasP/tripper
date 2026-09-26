@@ -8,16 +8,21 @@ import {
   deletePhoto,
   deleteTimelineEntry,
   loadParticipantTrip,
+  loadPublication,
   moveDailyPlan,
   moveTimelineEntry,
+  publishTrip,
   reorderPhotos,
   reorderTimelineEntries,
+  rotatePublicLink,
+  unpublishTrip,
   updateTripDetails,
   updateTimelineEntry,
   writeDailyPlan,
   writeStay,
   type DailyPlanResponse,
   type PhotoDetail,
+  type PublicationState,
   type TimelineEntryDetail,
   type TripDetail,
   type TripDetailsUpdate,
@@ -1860,14 +1865,115 @@ function renderEditorWorkspace(
 
   const showPublish = (): void => {
     const panel = document.createElement("div");
-    panel.className = "trip-workspace__panel";
+    panel.className = "trip-workspace__panel publication-panel";
     const title = document.createElement("h1");
     title.textContent = "Publish";
-    const description = document.createElement("p");
-    description.className = "trip-workspace__placeholder";
-    description.textContent = "This Trip is a private Draft. Publishing controls are not available yet.";
-    panel.append(title, description);
+    const status = document.createElement("p");
+    status.className = "publication-panel__status";
+    status.setAttribute("role", "status");
+    status.textContent = "Loading publication status…";
+    const disclosure = document.createElement("p");
+    disclosure.className = "publication-panel__disclosure";
+    disclosure.textContent =
+      "Anyone with the unlisted link can read the current saved guide. Participant names, roles, Accounts, Sessions, invitations, ownership details, and private reservation data are never included.";
+    const previewLink = document.createElement("a");
+    previewLink.className = "publication-panel__preview-link";
+    previewLink.href = viewGuide.href;
+    previewLink.textContent = "Preview saved guide";
+    const actions = document.createElement("div");
+    actions.className = "publication-panel__actions";
+    panel.append(title, status, disclosure, previewLink, actions);
     content.replaceChildren(panel);
+
+    const publicUrl = (token: string): string =>
+      new URL(`/g/${encodeURIComponent(token)}`, window.location.origin).href;
+
+    const actionButton = (
+      label: string,
+      action: () => Promise<PublicationState>,
+    ): HTMLButtonElement => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        status.textContent = "Updating publication…";
+        void action()
+          .then(renderState)
+          .catch((caught) => {
+            status.textContent =
+              caught instanceof Error ? caught.message : "Publication could not be changed.";
+            button.disabled = false;
+          });
+      });
+      return button;
+    };
+
+    const renderState = (state: PublicationState): void => {
+      actions.replaceChildren();
+      if (!state.is_published) {
+        status.textContent = state.public_token
+          ? "The Public link is disabled. Republishing restores this link."
+          : "This Trip is a private Draft.";
+        const publish = actionButton("Publish guide", () =>
+          publishTrip(trip.id, state.revision),
+        );
+        publish.className = "publication-panel__primary";
+        actions.appendChild(publish);
+        if (state.public_token) {
+          const rotate = actionButton("Rotate link", async () => {
+            if (!window.confirm("Replace the disabled Public link? The old link will permanently stop working.")) {
+              return state;
+            }
+            return rotatePublicLink(trip.id, state.revision);
+          });
+          actions.appendChild(rotate);
+        }
+        return;
+      }
+
+      status.textContent = "This saved guide is available to anyone with its unlisted link.";
+      if (state.public_token) {
+        const link = document.createElement("a");
+        link.className = "publication-panel__link";
+        link.href = publicUrl(state.public_token);
+        link.textContent = link.href;
+        link.target = "_blank";
+        link.rel = "noopener";
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy link";
+        copy.addEventListener("click", () => {
+          void navigator.clipboard
+            .writeText(link.href)
+            .then(() => {
+              status.textContent = "Public link copied.";
+            })
+            .catch(() => {
+              status.textContent = "Copy failed. Select and copy the link manually.";
+            });
+        });
+        actions.append(link, copy);
+      }
+      const unpublish = actionButton("Unpublish", async () => {
+        if (!window.confirm("Unpublish this guide? The Public link will stop working until you publish again.")) {
+          return state;
+        }
+        return unpublishTrip(trip.id, state.revision);
+      });
+      const rotate = actionButton("Rotate link", async () => {
+        if (!window.confirm("Replace the Public link? The old link will permanently stop working.")) {
+          return state;
+        }
+        return rotatePublicLink(trip.id, state.revision);
+      });
+      actions.append(unpublish, rotate);
+    };
+
+    void loadPublication(trip.id).then(renderState).catch((caught) => {
+      status.textContent =
+        caught instanceof Error ? caught.message : "Could not load publication status.";
+    });
   };
 
   const showDetails = (): void => {

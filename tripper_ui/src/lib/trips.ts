@@ -74,7 +74,35 @@ export interface StayWrite {
   booking_platform?: "booking.com" | "airbnb" | null;
 }
 
-export interface TripDetail {
+export interface GuideDetail {
+  name: string;
+  destination: string;
+  short_name: string;
+  description: string;
+  timezone: string;
+  location: { lat: number; lng: number } | null;
+  start_date: string;
+  end_date: string;
+  calendar: Array<{
+    date: string;
+    day_number: number;
+    is_planned: boolean;
+  }>;
+  daily_plans: Array<{
+    date: string;
+    day_number: number;
+    title: string;
+    summary: string;
+    background_image: string;
+    stay: Omit<StayDetail, "id" | "revision"> | null;
+    timeline: Array<
+      Omit<TimelineEntryDetail, "id" | "destination_id" | "revision" | "position">
+    >;
+    photos: Array<Pick<PhotoDetail, "url" | "caption">>;
+  }>;
+}
+
+export interface TripDetail extends GuideDetail {
   id: string;
   revision: number;
   content_revision: number;
@@ -143,6 +171,12 @@ export interface DailyPlanWrite {
   title: string;
   summary: string;
   background_image: string;
+}
+
+export interface PublicationState {
+  is_published: boolean;
+  public_token: string | null;
+  revision: number;
 }
 
 export interface DailyPlanResponse {
@@ -231,6 +265,57 @@ export function createTrip(trip: NewTrip): Promise<TripSummary> {
 
 export function loadParticipantTrip(tripId: string): Promise<TripDetail> {
   return apiRequest<TripDetail>(`/api/trips/${encodeURIComponent(tripId)}`);
+}
+
+export function loadPublicGuide(publicToken: string): Promise<GuideDetail> {
+  return apiRequest<GuideDetail>(
+    `/api/public-guides/${encodeURIComponent(publicToken)}`,
+  );
+}
+
+export function loadPublication(tripId: string): Promise<PublicationState> {
+  return apiRequest<PublicationState>(
+    `/api/trips/${encodeURIComponent(tripId)}/publication`,
+  );
+}
+
+export function publishTrip(
+  tripId: string,
+  startingRevision: number,
+): Promise<PublicationState> {
+  return apiRequest<PublicationState>(
+    `/api/trips/${encodeURIComponent(tripId)}/publication`,
+    {
+      method: "POST",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
+}
+
+export function unpublishTrip(
+  tripId: string,
+  startingRevision: number,
+): Promise<PublicationState> {
+  return apiRequest<PublicationState>(
+    `/api/trips/${encodeURIComponent(tripId)}/publication`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
+}
+
+export function rotatePublicLink(
+  tripId: string,
+  startingRevision: number,
+): Promise<PublicationState> {
+  return apiRequest<PublicationState>(
+    `/api/trips/${encodeURIComponent(tripId)}/publication/rotate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ starting_revision: startingRevision }),
+    },
+  );
 }
 
 export function updateTripDetails(

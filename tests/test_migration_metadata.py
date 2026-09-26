@@ -46,6 +46,9 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "end_date",
             "revision",
             "content_revision",
+            "public_token",
+            "published_at",
+            "publication_revision",
             "created_at",
         },
         "destinations": {
@@ -109,6 +112,9 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "end_date": ("DATE", False, False, None),
             "revision": ("INTEGER", False, False, "1"),
             "content_revision": ("INTEGER", False, False, "1"),
+            "public_token": ("VARCHAR(64)", True, False, None),
+            "published_at": ("DATETIME", True, False, None),
+            "publication_revision": ("INTEGER", False, False, "1"),
             "created_at": ("DATETIME", False, False, "CURRENT_TIMESTAMP"),
         },
         "destinations": {
@@ -180,6 +186,8 @@ def test_moved_table_metadata_preserves_columns_constraints_and_indexes() -> Non
             "valid_trip_date_range",
             "positive_trip_revision",
             "positive_trip_content_revision",
+            "positive_trip_publication_revision",
+            "uq_trips_public_token",
         },
         "destinations": {
             "nonnegative_destination_position",

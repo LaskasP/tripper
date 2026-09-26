@@ -1,5 +1,5 @@
 import "./style.css";
-import { renderParticipantGuide } from "./components/Guide";
+import { renderParticipantGuide, renderPublicGuide } from "./components/Guide";
 import { renderMyTrips } from "./components/MyTrips";
 import { renderTripPlanner } from "./components/TripPlanner";
 
@@ -17,13 +17,17 @@ async function main(): Promise<void> {
     await renderTripPlanner(app, decodeURIComponent(plannerRoute[1]));
     return;
   }
+  const publicGuideRoute = path.match(/\/g\/([^/]+)$/);
+  if (publicGuideRoute) {
+    await renderPublicGuide(app, decodeURIComponent(publicGuideRoute[1]));
+    return;
+  }
   const guideRoute = path.match(/\/trips\/([^/]+)$/);
   if (guideRoute) {
     await renderParticipantGuide(app, decodeURIComponent(guideRoute[1]));
     return;
   }
 
-  // Draft guides have no anonymous root route. The public route arrives at cutover.
   await renderMyTrips(app);
 }
 

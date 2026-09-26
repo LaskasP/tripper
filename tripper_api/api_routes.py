@@ -10,6 +10,7 @@ from tripper_api.itinerary.itinerary_timeline_controller import (
     router as timeline_router,
 )
 from tripper_api.membership.membership_controller import router as membership_router
+from tripper_api.publication.publication_controller import router as publication_router
 from tripper_api.trip.trip_command_controller import router as trip_command_router
 from tripper_api.trip.trip_controller import router as trip_router
 
@@ -22,4 +23,5 @@ def register_api_routes(app: FastAPI) -> None:
     app.include_router(stay_router)
     app.include_router(timeline_router)
     app.include_router(photo_router)
+    app.include_router(publication_router)
     app.include_router(trip_router)

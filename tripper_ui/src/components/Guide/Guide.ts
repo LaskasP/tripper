@@ -1,13 +1,13 @@
 import { createAppHeader, updateAppHeader } from "../AppHeader";
 import { createDay } from "../Day";
 import { createDotNav, updateDotNav } from "../DotNav";
-import type { TripDetail } from "../../lib/trips";
-import { loadParticipantTrip } from "../../lib/trips";
+import type { GuideDetail } from "../../lib/trips";
+import { loadParticipantTrip, loadPublicGuide } from "../../lib/trips";
 import { findTodayIndex } from "../../lib/time";
 import { fetchWeather } from "../../lib/weather";
 import type { Day } from "../../types";
 
-function guideDays(trip: TripDetail): Day[] {
+function guideDays(trip: GuideDetail): Day[] {
   return trip.calendar.map(({ date, day_number }) => {
     const plan = trip.daily_plans.find((item) => item.date === date);
     if (!plan) return {
@@ -49,7 +49,7 @@ function guideDays(trip: TripDetail): Day[] {
   });
 }
 
-export async function renderGuide(app: HTMLElement, trip: TripDetail): Promise<void> {
+export async function renderGuide(app: HTMLElement, trip: GuideDetail): Promise<void> {
   const days = guideDays(trip);
   document.documentElement.style.scrollSnapType = "y mandatory";
   document.title = trip.short_name || trip.name;
@@ -181,6 +181,30 @@ export async function renderGuide(app: HTMLElement, trip: TripDetail): Promise<v
     requestAnimationFrame(() =>
       daySections[todayIndex].scrollIntoView({ behavior: "instant" }),
     );
+  }
+}
+
+export async function renderPublicGuide(
+  app: HTMLElement,
+  publicToken: string,
+): Promise<void> {
+  let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+  if (!robots) {
+    robots = document.createElement("meta");
+    robots.name = "robots";
+    document.head.appendChild(robots);
+  }
+  robots.content = "noindex, nofollow";
+  const loading = document.createElement("p");
+  loading.className = "loading";
+  loading.textContent = "Loading trip…";
+  app.replaceChildren(loading);
+  try {
+    await renderGuide(app, await loadPublicGuide(publicToken));
+  } catch (caught) {
+    loading.className = "error";
+    loading.textContent =
+      caught instanceof Error ? caught.message : "This guide is not available.";
   }
 }
 
