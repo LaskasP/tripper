@@ -76,10 +76,10 @@ Preserve unrelated worktree changes. Prefer correctness and architectural consis
 Run checks from the repository root:
 
 ```text
-uv run ruff format --check .
+uv run ruff format .
 uv run ruff check .
 uv run mypy tripper_api
-uv run pytest
+uv run pytest -q --tb=short
 ```
 
 Report checks that are unavailable or prohibitively slow and what was actually run. Do not claim success for checks that were skipped.
