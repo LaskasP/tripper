@@ -1,10 +1,11 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tripper_api.core.constants import INVITATION_LIFETIME
 from tripper_api.invitation.invitation_dto import InvitationResponse
 from tripper_api.invitation.invitation_errors import (
     ActiveInvitationExistsError,
@@ -22,8 +23,6 @@ from tripper_api.invitation.invitation_secret import derive_invitation_secret
 from tripper_api.membership.membership_model import TripRole
 from tripper_api.membership.membership_repository import MembershipRepository
 from tripper_api.trip.trip_errors import TripNotFoundError
-
-INVITATION_LIFETIME = timedelta(days=7)
 
 
 class InvitationService:
