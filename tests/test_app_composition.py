@@ -276,9 +276,10 @@ async def test_application_config_exposes_disabled_invitations(
     )
     app = create_app(settings)
 
-    async with LifespanManager(app), AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with (
+        LifespanManager(app),
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+    ):
         response = await client.get("/api/config")
 
     assert response.status_code == 200
