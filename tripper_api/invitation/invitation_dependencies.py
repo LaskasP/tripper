@@ -11,6 +11,7 @@ from tripper_api.invitation.invitation_service import (
     InvitationService,
 )
 from tripper_api.membership.membership_repository import MembershipRepository
+from tripper_api.trip.trip_access_control import TripAccessControl
 
 
 def get_invitation_service(
@@ -18,9 +19,10 @@ def get_invitation_service(
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> InvitationService:
     settings = cast(Settings, request.app.state.settings)
+    membership_repository = MembershipRepository(session)
     return InvitationService(
         session,
-        MembershipRepository(session),
+        TripAccessControl(membership_repository),
         InvitationRepository(session),
         settings.invitation_key_bytes(),
     )

@@ -21,20 +21,19 @@ from tripper_api.invitation.invitation_read_model import NormalizedDeliveryEvent
 from tripper_api.invitation.invitation_repository import InvitationRepository
 from tripper_api.invitation.invitation_secret import derive_invitation_secret
 from tripper_api.membership.membership_model import TripRole
-from tripper_api.membership.membership_repository import MembershipRepository
-from tripper_api.trip.trip_errors import TripNotFoundError
+from tripper_api.trip.trip_access_control import TripAccessControl
 
 
 class InvitationService:
     def __init__(
         self,
         session: AsyncSession,
-        membership_repository: MembershipRepository,
+        access_control: TripAccessControl,
         invitation_repository: InvitationRepository,
         token_key: bytes,
     ) -> None:
         self._session = session
-        self._memberships = membership_repository
+        self._access_control = access_control
         self._invitations = invitation_repository
         self._token_key = token_key
 
@@ -129,12 +128,8 @@ class InvitationService:
         )
 
     async def _require_creator(self, trip_id: UUID, account_id: UUID) -> None:
-        membership_access = await self._memberships.lock_trip_and_get_membership(
-            trip_id, account_id
-        )
-        if membership_access is None:
-            raise TripNotFoundError
-        if membership_access.role is not TripRole.CREATOR:
+        access = await self._access_control.lock_for_edit(trip_id, account_id)
+        if access.role is not TripRole.CREATOR:
             raise InvitationForbiddenError
 
 
